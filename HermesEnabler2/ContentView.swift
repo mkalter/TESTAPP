@@ -28,7 +28,7 @@ struct ContentView: View {
                         NavigationLink { BackupView(model: model) } label: {
                             Label("MG Backups", systemImage: "archivebox")
                         }
-                        NavigationLink { RouteDiagnosticsView() } label: {
+                        NavigationLink { RouteDiagnosticsView(model: model) } label: {
                             Label("Route Tests (read only)", systemImage: "stethoscope")
                         }
                     }

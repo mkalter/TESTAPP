@@ -26,6 +26,16 @@ struct ContentView: View {
                     WatchInstallationCard(watchManager: watchManager)
                     LatestBackupCard(watchManager: watchManager)
 
+                    NavigationLink {
+                        RemoteWatchControlView(manager: watchManager)
+                    } label: {
+                        Label("Watch Tests & Feature Switches", systemImage: "applewatch.side.right")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
+
                     actionButtons
                 }
                 .padding()

@@ -88,7 +88,7 @@ struct BackupView: View {
 
             Section("Research diagnostics") {
                 NavigationLink {
-                    RouteDiagnosticsView()
+                    RouteDiagnosticsView(model: model)
                 } label: {
                     Label("Class 13 / Class 12 tests", systemImage: "stethoscope")
                 }
