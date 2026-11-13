@@ -1,4 +1,5 @@
 #import "BQRouteProbe.h"
+#import "BQCore.h"
 #import <WatchKit/WatchKit.h>
 #import <dlfcn.h>
 #import <fcntl.h>
@@ -202,6 +203,8 @@ NSString *BQRunRouteDiagnostics(void) {
                12, @"com.apple.geod", NO, geodDomain,
                UINT64_C(0x8100000000), privatePath);
 
+    // Extend the same run with every original selectable fallback.
+    [log appendString:BQRunExistingFallbackDiagnostics()];
     [log appendString:@"\nINTERPRETATION:\n"
         "Only O_RDWR OPEN OK on the protected file is evidence of writable-open permission.\n"
         "A successful query, token, or readable file alone is insufficient.\n"
