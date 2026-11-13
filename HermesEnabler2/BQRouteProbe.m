@@ -102,7 +102,7 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     if (!api->create || !api->setClass || !api->setFlags ||
         !api->getResult || !api->copyToken || !api->consumeToken ||
         !api->releaseToken || !api->freeQuery ||
-        !api->createXPCString || !api->releaseXPCObject ||
+        !api->createXPCString || !api->releaseXPCObject || !api->setPart ||
         (isGroup && !api->setGroupIdentifiers) ||
         (!isGroup && !api->setIdentifiers) ||
         (domain.length && !api->setDomain)) {
@@ -118,6 +118,11 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
 
     api->setClass(query, classNumber);
     void *xIdentifier = api->createXPCString(identifier.UTF8String);
+    if (!xIdentifier) {
+        [log appendString:@"SKIPPED: cannot construct XPC identifier\n"];
+        api->freeQuery(query);
+        return;
+    }
     if (isGroup) api->setGroupIdentifiers(query, xIdentifier);
     else api->setIdentifiers(query, xIdentifier);
     if (xIdentifier) api->releaseXPCObject(xIdentifier);
@@ -201,5 +206,16 @@ NSString *BQRunRouteDiagnostics(void) {
         "Only O_RDWR OPEN OK on the protected file is evidence of writable-open permission.\n"
         "A successful query, token, or readable file alone is insufficient.\n"
         "O_RDWR OPEN OK does not prove safe MobileGestalt editing or Hermès face eligibility.\n"];
+    // Save only to our app's Documents folder; never write the system cache.
+    NSString *documents = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:documents
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *reportPath = [documents stringByAppendingPathComponent:@"watchos26-route-diagnostics.txt"];
+    NSError *writeError = nil;
+    if ([log writeToFile:reportPath atomically:YES encoding:NSUTF8StringEncoding error:&writeError]) {
+        [log appendFormat:@"\nReport saved in app sandbox: %@\n", reportPath];
+    } else {
+        [log appendFormat:@"\nCould not save report in app sandbox: %@\n", writeError];
+    }
     return log;
 }
