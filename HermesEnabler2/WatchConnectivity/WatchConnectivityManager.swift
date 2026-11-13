@@ -236,6 +236,25 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             switch command {
             case "routes":
                 replyHandler(["ok": true, "report": BQRunRouteDiagnostics()])
+            case "createBackup":
+                if BQBackupExists() {
+                    replyHandler(["ok": true, "message": "Initial MobileGestalt backup already exists on Watch."])
+                } else {
+                    var error: NSString?
+                    if BQCreateGestaltBackup(true, &error) != nil {
+                        self.transferOriginalBackup()
+                        replyHandler(["ok": true, "message": "Initial MobileGestalt backup saved on Watch."])
+                    } else {
+                        replyHandler(["ok": false,
+                                      "error": (error as String?) ?? "Backup could not be created."])
+                    }
+                }
+            case "respring":
+                replyHandler(["ok": true, "message": "Restart Carousel requested on Watch."])
+                DispatchQueue.global(qos: .userInitiated)
+                    .asyncAfter(deadline: .now() + .milliseconds(300)) {
+                        BQRespring()
+                    }
             case "readFeature":
                 guard let key = message["key"] as? String else {
                     replyHandler(["ok": false, "error": "Missing feature key"])
