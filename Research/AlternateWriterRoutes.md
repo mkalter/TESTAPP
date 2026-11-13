@@ -8,7 +8,7 @@ It first proves the marker writer in the app's own Documents directory. It tries
 
 **3/3 means only staging prerequisites passed in separate leases.** It does not prove that a persisted graph will deserialize, materialize, or write MobileGestalt. No graph is installed. A negative result does not prove that every writer is impossible.
 Report: Documents/watchos26-installcoord-entry.txt.
-WatchConnectivity command: daemonStagingWriteTest. The Watch UI has a direct button; no iPhone button is added.
+WatchConnectivity command: daemonStagingWriteTest. Both the Watch UI and iPhone remote controls have a Test Daemon Staging Writes button. The iPhone displays the returned report and supports copying it.
 
 ## Mechanisms examined
 - InstallCoordination: daemon-side plist materialization is distinct from directly opening MobileGestalt. Published staging entry is still MCM-dependent. Tested on another Watch/23U95 and blocked; not assumed identical to this Watch/23U67.

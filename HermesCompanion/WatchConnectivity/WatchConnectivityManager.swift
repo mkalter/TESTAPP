@@ -246,6 +246,19 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         }
     }
 
+    func runRemoteDaemonWriteTest() {
+        remoteStatus = "Testing InstallCoordination staging writes on Watch..."
+        sendWatchCommand(["command": "daemonStagingWriteTest"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true, let report = result["report"] as? String {
+                self.remoteRouteReport = report
+                self.remoteStatus = "Staging test completed. Read the per-directory write and cleanup results."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Staging test failed."
+            }
+        }
+    }
+
     func runRemoteRouteScan() {
         remoteStatus = "Requesting individual route tests on Watch..."
         sendWatchCommand(["command": "routes"]) { [weak self] result in

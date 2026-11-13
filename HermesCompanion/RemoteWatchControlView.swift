@@ -120,6 +120,18 @@ struct RemoteWatchControlView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Alternate Writer: InstallCoordination") {
+                Button {
+                    manager.runRemoteDaemonWriteTest()
+                } label: {
+                    Label("Test Daemon Staging Writes", systemImage: "doc.badge.gearshape")
+                }
+                .disabled(manager.remoteBusy || !manager.isReachable)
+                Text("Creates, verifies and removes unique test files in the Watch's staging directories. Does not modify MobileGestalt or start an installation. Results appear in Full Diagnostic Report.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             ForEach(groups) { group in
                 Section(group.id) {
                     ForEach(group.features) { feature in
