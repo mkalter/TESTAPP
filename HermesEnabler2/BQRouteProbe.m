@@ -1,5 +1,6 @@
 #import "BQRouteProbe.h"
 #import "BQCore.h"
+#import "BQSystemAudit.h"
 #import <WatchKit/WatchKit.h>
 #import <dlfcn.h>
 #import <fcntl.h>
@@ -178,6 +179,7 @@ static void BQRunQueryPart(NSMutableString *log, const BQProbeAPI *api, NSString
 
     // IMPORTANT: the only filesystem operation below is open(2), followed by
     // fstat(2) and close(2). O_RDWR does not write to the file on its own.
+    [log appendFormat:@"sandbox policy after token: %@\n", BQSandboxPolicySummary(targetFile)];
     [log appendFormat:@"target=%@\nO_RDONLY: %@\nO_RDWR: %@\n",
         targetFile, BQOpenCheck(targetFile, O_RDONLY),
         BQOpenCheck(targetFile, O_RDWR)];
@@ -197,7 +199,7 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
 
 NSString *BQRunRouteDiagnostics(void) {
     NSMutableString *log = [NSMutableString string];
-    [log appendString:@"DIAGNOSTICS v2 — token-type and container controls\n"];
+    [log appendString:@"DIAGNOSTICS v3 — token, entitlement, sandbox, daemon and cross-device controls\n"];
     char build[128] = {0};
     size_t buildSize = sizeof(build);
     if (sysctlbyname("kern.osversion", build, &buildSize, NULL, 0) != 0)
@@ -224,7 +226,10 @@ NSString *BQRunRouteDiagnostics(void) {
     [log appendFormat:@"\nMCM loaded=%@ setPart=%@ setDomain=%@\n",
         api.library ? @"YES" : @"NO", api.setPart ? @"YES" : @"NO",
         api.setDomain ? @"YES" : @"NO"];
-    if (!api.library) return log;
+    if (!api.library) {
+        [log appendString:BQSystemAudit()];
+        return log;
+    }
 
     NSString *group = @"systemgroup.com.apple.mobilegestaltcache";
 
@@ -282,6 +287,7 @@ NSString *BQRunRouteDiagnostics(void) {
 
     // Extend the same run with every original selectable fallback.
     [log appendString:BQRunExistingFallbackDiagnostics()];
+    [log appendString:BQSystemAudit()];
     [log appendString:@"\nINTERPRETATION:\n"
         "The lower flag 0x0800000000 may return a system-group token without granting file-write-data.\n"
         "Only O_RDWR OPEN OK on the protected file is evidence of writable-open permission.\n"
