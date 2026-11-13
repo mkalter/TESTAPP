@@ -195,6 +195,19 @@ NSString *BQRunRouteDiagnostics(void) {
     BQRunQuery(log, &api, @"HermesEnabler Class13 direct (control)",
                13, group, YES, @"", UINT64_C(0x8100000000), privatePath);
 
+    // Critical differential probe: 0x0800000000 is 0x800000000, NOT
+    // 0x8000000000. On a published Watch6,14 / 23U95 investigation it
+    // returned a com.apple.sandbox.system-group token, but O_RDWR still
+    // failed because token consumption != sandbox file-write-data grant.
+    BQRunQuery(log, &api, @"Class13 direct / system-group token probe (0x0800000000)",
+               13, group, YES, @"", UINT64_C(0x0800000000), privatePath);
+
+    // This checks whether the *same lower flag* changes per-file traversal
+    // independently of the previously tested WorstGestalt high-bit flag.
+    BQRunQuery(log, &api, @"Class13 per-file / lower-flag differential (0x0800000000)",
+               13, group, YES, [BQDots(8) stringByAppendingString:privatePath],
+               UINT64_C(0x0800000000), privatePath);
+
     // The published Geod Class12 proof of concept uses six ".." path segments
     // from the geod system container before descending into SystemGroup.
     NSString *geodDomain = [BQDots(6) stringByAppendingString:
@@ -206,6 +219,7 @@ NSString *BQRunRouteDiagnostics(void) {
     // Extend the same run with every original selectable fallback.
     [log appendString:BQRunExistingFallbackDiagnostics()];
     [log appendString:@"\nINTERPRETATION:\n"
+        "The lower flag 0x0800000000 may return a system-group token without granting file-write-data.\n"
         "Only O_RDWR OPEN OK on the protected file is evidence of writable-open permission.\n"
         "A successful query, token, or readable file alone is insufficient.\n"
         "O_RDWR OPEN OK does not prove safe MobileGestalt editing or Hermès face eligibility.\n"];
