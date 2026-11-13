@@ -1,0 +1,26 @@
+name: Build watchOS route diagnostics
+
+on:
+  push:
+    branches:
+      - watchos26-route-diagnostics
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print selected Xcode and watchOS SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Compile the Watch application without signing
+        run: |
+          xcodebuild \
+            -project HermesEnabler2.xcodeproj \
+            -scheme HermesEnabler2 \
+            -configuration Debug \
+            -destination 'generic/platform=watchOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
