@@ -4,6 +4,7 @@ import SwiftUI
 /// Nothing in this iPhone screen touches an iPhone MobileGestalt cache.
 struct RemoteWatchControlView: View {
     @ObservedObject var manager: WatchConnectivityManager
+    @State private var localPhoneReport = "No iPhone-side audit yet."
 
     struct Feature: Identifiable {
         let id: String
@@ -80,6 +81,24 @@ struct RemoteWatchControlView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("iOS 27 vs watchOS 26 Security Boundary") {
+                Button {
+                    localPhoneReport = PhoneSystemAudit.report(
+                        watchConnected: manager.isReachable,
+                        watchVersion: manager.watchOSVersion,
+                        watchHardware: manager.hardwareIdentifier
+                    )
+                } label: {
+                    Label("Audit iPhone / Paired Watch Separation", systemImage: "iphone.gen3")
+                }
+                Text("iPhone MobileGestalt permissions do not automatically apply on the Watch.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text(localPhoneReport)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+
             Section("Sandbox Route Diagnostics") {
                 Button {
                     manager.runRemoteRouteScan()
@@ -117,6 +136,11 @@ struct RemoteWatchControlView: View {
             }
 
             Section("Full Diagnostic Report") {
+                Button {
+                    UIPasteboard.general.string = manager.remoteRouteReport
+                } label: {
+                    Label("Copy Watch Report", systemImage: "doc.on.doc")
+                }
                 Text(manager.remoteRouteReport)
                     .font(.system(.caption2, design: .monospaced))
                     .textSelection(.enabled)
