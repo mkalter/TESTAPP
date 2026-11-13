@@ -21,6 +21,7 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
     // MARK: - Remote Watch control
     @Published var remoteFeatureStates: [String: Bool] = [:]
     @Published var remoteRouteReport = "No route scan yet."
+    @Published var remoteRelayReport = "No phone-to-watch relay test yet."
     @Published var remoteStatus = "Open HermesEnabler on the Watch to connect."
     @Published var remoteBusy = false
 
@@ -228,6 +229,20 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
             guard let self else { return }
             self.remoteStatus = result["message"] as? String
                 ?? (result["error"] as? String ?? "Carousel restart request failed.")
+        }
+    }
+
+    func testPhoneToWatchRelay() {
+        remoteStatus = "Testing phone-to-watch app-sandbox relay..."
+        sendWatchCommand(["command": "relayProbe"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let report = result["report"] as? String {
+                self.remoteRelayReport = report
+                self.remoteStatus = "Relay test completed. Check the boundary report."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Relay test failed."
+            }
         }
     }
 
