@@ -1,7 +1,6 @@
 #import "BQRouteProbe.h"
 #import <WatchKit/WatchKit.h>
 #import <dlfcn.h>
-#import <xpc/xpc.h>
 #import <fcntl.h>
 #import <unistd.h>
 #import <errno.h>
@@ -11,7 +10,9 @@
 
 typedef void *(*BQCreateFn)(void);
 typedef void (*BQSetU64Fn)(void *, uint64_t);
-typedef void (*BQSetObjFn)(void *, xpc_object_t);
+typedef void (*BQSetObjFn)(void *, void *);
+typedef void *(*BQXPCStringCreateFn)(const char *);
+typedef void (*BQXPCReleaseFn)(void *);
 typedef void (*BQSetStrFn)(void *, const char *);
 typedef void *(*BQResultFn)(void *);
 typedef char *(*BQCopyTokenFn)(void *);
@@ -35,6 +36,8 @@ typedef struct {
     BQFreeFn freeQuery;
     BQConsumeFn consumeToken;
     BQReleaseFn releaseToken;
+    BQXPCStringCreateFn createXPCString;
+    BQXPCReleaseFn releaseXPCObject;
 } BQProbeAPI;
 
 static void *BQSymbol(void *library, const char *preferred, const char *legacy) {
@@ -63,6 +66,8 @@ static BQProbeAPI BQLoadProbeAPI(void) {
     api.freeQuery = (BQFreeFn)BQSymbol(api.library, "container_query_free", NULL);
     api.consumeToken = (BQConsumeFn)dlsym(RTLD_DEFAULT, "sandbox_extension_consume");
     api.releaseToken = (BQReleaseFn)dlsym(RTLD_DEFAULT, "sandbox_extension_release");
+    api.createXPCString = (BQXPCStringCreateFn)dlsym(RTLD_DEFAULT, "xpc_string_create");
+    api.releaseXPCObject = (BQXPCReleaseFn)dlsym(RTLD_DEFAULT, "xpc_release");
     return api;
 }
 
@@ -97,6 +102,7 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     if (!api->create || !api->setClass || !api->setFlags ||
         !api->getResult || !api->copyToken || !api->consumeToken ||
         !api->releaseToken || !api->freeQuery ||
+        !api->createXPCString || !api->releaseXPCObject ||
         (isGroup && !api->setGroupIdentifiers) ||
         (!isGroup && !api->setIdentifiers) ||
         (domain.length && !api->setDomain)) {
@@ -111,10 +117,10 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     }
 
     api->setClass(query, classNumber);
-    xpc_object_t xIdentifier = xpc_string_create(identifier.UTF8String);
+    void *xIdentifier = api->createXPCString(identifier.UTF8String);
     if (isGroup) api->setGroupIdentifiers(query, xIdentifier);
     else api->setIdentifiers(query, xIdentifier);
-    xpc_release(xIdentifier);
+    if (xIdentifier) api->releaseXPCObject(xIdentifier);
     if (api->setPart) api->setPart(query, 3);
     if (domain.length) api->setDomain(query, domain.UTF8String);
     api->setFlags(query, flags);
