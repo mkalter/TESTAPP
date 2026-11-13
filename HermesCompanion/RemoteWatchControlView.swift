@@ -97,6 +97,15 @@ struct RemoteWatchControlView: View {
                 Text(localPhoneReport)
                     .font(.system(.caption2, design: .monospaced))
                     .textSelection(.enabled)
+                Button {
+                    manager.testPhoneToWatchRelay()
+                } label: {
+                    Label("Test iPhone → Watch File Relay", systemImage: "applewatch.and.arrow.forward")
+                }
+                .disabled(manager.remoteBusy || !manager.isReachable)
+                Text(manager.remoteRelayReport)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
             }
 
             Section("Sandbox Route Diagnostics") {
