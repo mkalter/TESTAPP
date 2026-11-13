@@ -5,7 +5,7 @@ import SwiftUI
 struct RouteDiagnosticsView: View {
     let model: ContentModel
 
-    @State private var report = "Run All Routes checks ten independently selected MCM paths."
+    @State private var report = "Run All Routes checks nine independent MCM route variants; the risky Class-2 parent route is intentionally skipped."
     @State private var running = false
 
     var body: some View {
