@@ -27,3 +27,13 @@ jobs:
             -destination 'generic/platform=watchOS' \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Package unsigned iPhone + Watch testing IPA
+        run: |
+          bash scripts/create_ipa.sh \
+            --output build/ipa/HermesEnabler-watchOS26-route-tests.ipa
+      - name: Upload unsigned test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-watchOS26-route-tests-unsigned
+          path: build/ipa/HermesEnabler-watchOS26-route-tests.ipa
+          if-no-files-found: error
