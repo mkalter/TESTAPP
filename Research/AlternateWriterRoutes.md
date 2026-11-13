@@ -1,12 +1,12 @@
 # Alternate writer investigation — 2026-11-13
 
-## New executable test
+## Executable test v2 (direct-create, 2026-11-13)
 Watch UI: **Test Daemon Staging Writes**. The existing bulk scan stays read-only with respect to protected system data.
 The new action tests InstallCoordination's PromiseStaging, DataPromises and Coordinators, using the published request and a type-1 comparison.
 
-It first proves the marker writer in the app's own Documents directory. It tries a baseline in each fixed staging directory, then a token-scoped test with an exact returned-path check. The marker name is random, opened relative to a retained directory FD using O_EXCL and O_NOFOLLOW. The bytes are reopened and compared, then the marker is unlinked and its absence checked before token release. No existing file is replaced. Cleanup failures are included in the report.
+It first tests directory-based and direct-create canaries in the app's own Documents. For the fixed staging directories it records separate directory-read and direct-write results, before and after each MCM token. Direct-create uses a UUID path with O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW and does NOT call O_RDONLY | O_DIRECTORY first. It checks the byte count and file size from the written FD, attempts independent O_RDONLY readback (which is allowed to fail for a write-only token), then unlinks only its newly created name and checks absence. If cleanup cannot be verified, subsequent staging tests are stopped. No existing file is replaced. No install graph is created.
 
-**3/3 means only staging prerequisites passed in separate leases.** It does not prove that a persisted graph will deserialize, materialize, or write MobileGestalt. No graph is installed. A negative result does not prove that every writer is impossible.
+**STAGING DIRECT WRITES 3/3** means only direct canary creation/write/removal passed in separate leases. It does not prove that a persisted graph will deserialize, materialize, or write MobileGestalt. Readback failures are reported separately and do not invalidate write-only evidence. A negative result does not prove that every writer is impossible.
 Report: Documents/watchos26-installcoord-entry.txt.
 WatchConnectivity command: daemonStagingWriteTest. Both the Watch UI and iPhone remote controls have a Test Daemon Staging Writes button. The iPhone displays the returned report and supports copying it.
 

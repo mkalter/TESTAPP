@@ -389,38 +389,140 @@ static BOOL BQMarkerRoundTrip(NSString *root, NSMutableString *out) {
     return verified && removed == 0 && absent;
 }
 
+// Distinguishes directory-read access from direct create/write access.
+// The path is derived from a fixed system staging root and a fresh UUID.
+// O_EXCL prevents replacing existing files; every created canary is unlinked
+// before the extension is released. On cleanup failure, stop further testing.
+static BOOL BQDirectMarkerProbe(NSString *root, NSMutableString *out, BOOL *cleanupFailure) {
+    if (cleanupFailure) *cleanupFailure = NO;
+    NSString *leaf = [@".hermes-direct-" stringByAppendingString:NSUUID.UUID.UUIDString];
+    NSString *path = [root stringByAppendingPathComponent:leaf];
+    errno = 0;
+    int fd = open(path.fileSystemRepresentation,
+                  O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    int createError = errno;
+    if (fd < 0) {
+        [out appendFormat:@"direct O_WRONLY|O_CREAT|O_EXCL failed errno=%d (%s)\n",
+            createError, strerror(createError)];
+        return NO;
+    }
+    const char marker[] = "Hermes direct-write canary; no install graph\n";
+    const size_t length = sizeof(marker) - 1;
+    size_t done = 0;
+    int writeError = 0;
+    while (done < length) {
+        ssize_t n = write(fd, marker + done, length - done);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) { writeError = n < 0 ? errno : EIO; break; }
+        done += (size_t)n;
+    }
+    struct stat created = {0};
+    BOOL correctFile = fstat(fd, &created) == 0 && S_ISREG(created.st_mode) &&
+                       created.st_size == (off_t)length;
+    close(fd);
+    // Readback is informative but NOT a prerequisite for proving write-only
+    // access. It may fail under a write-only sandbox extension.
+    errno = 0;
+    int readFD = open(path.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    int readOpenError = errno;
+    char bytes[sizeof(marker)] = {0};
+    size_t got = 0;
+    BOOL sameInode = NO;
+    if (readFD >= 0) {
+        struct stat reopened = {0};
+        sameInode = fstat(readFD, &reopened) == 0 && correctFile &&
+                    created.st_dev == reopened.st_dev && created.st_ino == reopened.st_ino;
+        if (sameInode) {
+            while (got < length) {
+                ssize_t n = read(readFD, bytes + got, length - got);
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                got += (size_t)n;
+            }
+        }
+        close(readFD);
+    }
+    BOOL readback = sameInode && got == length && memcmp(bytes, marker, length) == 0;
+    // Removing only our newly created name, never an existing staging item.
+    errno = 0;
+    int removeStatus = unlink(path.fileSystemRepresentation);
+    int removeError = errno;
+    errno = 0;
+    struct stat remaining = {0};
+    int statStatus = lstat(path.fileSystemRepresentation, &remaining);
+    int statError = errno;
+    BOOL absent = statStatus == -1 && statError == ENOENT;
+    BOOL cleanupVerified = removeStatus == 0 && absent;
+    [out appendFormat:
+        @"direct create=YES wrote=%@ bytes=%lu fstatCorrect=%@ "
+         "readback=%@ readOpenErrno=%d removed=%@ removeErrno=%d "
+         "absent=%@ lstatErrno=%d\n",
+        done == length ? @"YES" : @"NO", (unsigned long)done,
+        correctFile ? @"YES" : @"NO", readback ? @"YES" : @"NO",
+        readFD < 0 ? readOpenError : 0,
+        removeStatus == 0 ? @"YES" : @"NO", removeStatus == 0 ? 0 : removeError,
+        absent ? @"YES" : @"NO", statStatus < 0 ? statError : 0];
+    if (!cleanupVerified) {
+        [out appendFormat:
+            @"CLEANUP NOT VERIFIED: canary=%@ unlinkErrno=%d lstatErrno=%d. "
+             "Stop additional staging tests.\n",
+            path, removeStatus == 0 ? 0 : removeError, statStatus < 0 ? statError : 0];
+        if (cleanupFailure) *cleanupFailure = YES;
+    }
+    return done == length && correctFile && cleanupVerified;
+}
+
 NSString *BQRunDaemonWriteProbe(void) {
     NSMutableString *out = [NSMutableString stringWithString:
-        @"INSTALLCOORDINATION ENTRY TEST v1\n"
-         "Creates, verifies and removes unique canaries. Does not stage an install graph or modify MobileGestalt.\n"];
+        @"INSTALLCOORDINATION ENTRY TEST v2\n"
+         "Separate directory-read and direct-create canaries. "
+         "Does not stage an install graph or modify MobileGestalt.\n"];
     [out appendFormat:@"time=%@ OS=%@\n", [NSDate date], NSProcessInfo.processInfo.operatingSystemVersionString];
     NSString *documents = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:documents withIntermediateDirectories:YES attributes:nil error:nil];
-    [out appendString:@"\nCONTROL: own Documents\n"];
-    BOOL control = BQMarkerRoundTrip(documents, out);
+    [[NSFileManager defaultManager] createDirectoryAtPath:documents
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    [out appendString:@"\nCONTROL: own Documents (directory-based)\n"];
+    BOOL controlDirectory = BQMarkerRoundTrip(documents, out);
+    [out appendString:@"CONTROL: own Documents (direct create)\n"];
+    BOOL controlCleanupFailure = NO;
+    BOOL controlDirect = BQDirectMarkerProbe(documents, out, &controlCleanupFailure);
     BQProbeAPI api = BQLoadProbeAPI();
     BOOL symbols = api.create && api.setClass && api.setGroupIdentifiers &&
         api.setFlags && api.setPart && api.setDomain && api.getResult && api.getPath &&
         api.copyToken && api.consumeToken && api.releaseToken && api.freeQuery &&
         api.createXPCString && api.releaseXPCObject;
-    if (!control || !symbols) {
-        [out appendFormat:@"STOP: control=%@ MCM symbols=%@; staging tests not run\n",
-            control ? @"PASS" : @"FAIL", symbols ? @"YES" : @"NO"];
+    if (!controlDirectory || !controlDirect || controlCleanupFailure || !symbols) {
+        [out appendFormat:@"STOP: controlDirectory=%@ controlDirect=%@ cleanupOK=%@ MCM symbols=%@\n",
+            controlDirectory ? @"PASS" : @"FAIL", controlDirect ? @"PASS" : @"FAIL",
+            controlCleanupFailure ? @"NO" : @"YES", symbols ? @"YES" : @"NO"];
     } else {
         NSString *base = @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.installcoordinationd/Library/InstallCoordination";
         NSArray<NSString *> *parts = @[@"PromiseStaging", @"DataPromises", @"Coordinators"];
         uint64_t flags[] = {UINT64_C(0x8100000000), UINT64_C(0x0900000000)};
+        BOOL stoppedForCleanup = NO;
         for (unsigned variant = 0; variant < 2; ++variant) {
-            unsigned passed = 0;
+            unsigned directoryPassed = 0, directPassed = 0;
             [out appendFormat:@"\nREQUEST VARIANT flags=0x%llx\n", (unsigned long long)flags[variant]];
             for (NSString *part in parts) {
                 NSString *expected = [base stringByAppendingPathComponent:part];
-                [out appendFormat:@"\n[%@] baseline\n", part];
-                BOOL before = BQMarkerRoundTrip(expected, out);
+                [out appendFormat:@"\n[%@] baseline DIRECTORY test\n", part];
+                BOOL beforeDirectory = BQMarkerRoundTrip(expected, out);
+                [out appendString:@"baseline DIRECT-CREATE test\n"];
+                BOOL cleanupFailure = NO;
+                BOOL beforeDirect = BQDirectMarkerProbe(expected, out, &cleanupFailure);
+                if (cleanupFailure) {
+                    stoppedForCleanup = YES;
+                    [out appendString:@"STOP: baseline canary cleanup could not be verified.\n"];
+                    break;
+                }
                 void *q = api.create();
                 if (!q) { [out appendString:@"query allocation failed\n"]; continue; }
                 void *identifier = api.createXPCString("systemgroup.com.apple.installcoordinationd");
-                if (!identifier) { api.freeQuery(q); [out appendString:@"identifier allocation failed\n"]; continue; }
+                if (!identifier) {
+                    api.freeQuery(q);
+                    [out appendString:@"identifier allocation failed\n"];
+                    continue;
+                }
                 api.setClass(q, 13);
                 api.setGroupIdentifiers(q, identifier);
                 api.releaseXPCObject(identifier);
@@ -432,7 +534,8 @@ NSString *BQRunDaemonWriteProbe(void) {
                 const char *raw = result ? api.getPath(result) : NULL;
                 NSString *returned = raw ? [NSString stringWithUTF8String:raw] : nil;
                 NSString *normalized = returned.stringByStandardizingPath;
-                if ([normalized hasPrefix:@"/var/"]) normalized = [@"/private" stringByAppendingString:normalized];
+                if ([normalized hasPrefix:@"/var/"])
+                    normalized = [@"/private" stringByAppendingString:normalized];
                 BOOL matches = [normalized isEqualToString:expected];
                 char *token = result ? api.copyToken(result) : NULL;
                 int64_t handle = token && matches ? api.consumeToken(token) : -1;
@@ -445,19 +548,45 @@ NSString *BQRunDaemonWriteProbe(void) {
                     [out appendFormat:@"query error posix=%d message=%s\n",
                         api.errorPosix ? api.errorPosix(error) : 0, msg ?: "(none)"];
                 }
-                BOOL after = NO;
-                if (handle >= 0) after = BQMarkerRoundTrip(expected, out);
-                if (before || after) ++passed;
-                [out appendFormat:@"staging write verified=%@ new access after token=%@\n",
-                    before || after ? @"YES" : @"NO", !before && after ? @"YES" : @"NO"];
-                if (handle >= 0) [out appendFormat:@"token release=%lld\n", (long long)api.releaseToken(handle)];
+                BOOL afterDirectory = NO, afterDirect = NO;
+                if (handle >= 0) {
+                    [out appendString:@"after token DIRECTORY test\n"];
+                    afterDirectory = BQMarkerRoundTrip(expected, out);
+                    [out appendString:@"after token DIRECT-CREATE test\n"];
+                    afterDirect = BQDirectMarkerProbe(expected, out, &cleanupFailure);
+                }
+                if (beforeDirectory || afterDirectory) ++directoryPassed;
+                if (beforeDirect || afterDirect) ++directPassed;
+                [out appendFormat:
+                    @"directory roundtrip=%@ new directory access after token=%@\n"
+                     "direct write+cleanup=%@ new direct-create access after token=%@\n",
+                    beforeDirectory || afterDirectory ? @"YES" : @"NO",
+                    !beforeDirectory && afterDirectory ? @"YES" : @"NO",
+                    beforeDirect || afterDirect ? @"YES" : @"NO",
+                    !beforeDirect && afterDirect ? @"YES" : @"NO"];
+                if (handle >= 0)
+                    [out appendFormat:@"token release=%lld\n", (long long)api.releaseToken(handle)];
                 free(token);
                 api.freeQuery(q);
+                if (cleanupFailure) {
+                    stoppedForCleanup = YES;
+                    [out appendString:@"STOP: after-token canary cleanup could not be verified.\n"];
+                    break;
+                }
             }
-            [out appendFormat:@"STAGING PREREQUISITES: %u/3 verified in separate leases\n", passed];
+            [out appendFormat:
+                @"STAGING DIRECTORY ROUNDTRIPS: %u/3\nSTAGING DIRECT WRITES: %u/3%@\n",
+                directoryPassed, directPassed,
+                stoppedForCleanup ? @" (INCOMPLETE: cleanup stop)" : @""];
+            if (stoppedForCleanup) break;
         }
     }
-    [out appendString:@"\n0/3 = tested entry unavailable; 3/3 = staging access only, NOT proof of daemon write or MobileGestalt access.\n"];
+    [out appendString:
+        @"\nInterpretation: a consumed token is not proof of a granted operation. "
+         "Direct create tests write-only access without a directory-read prerequisite. "
+         "A successful direct write+cleanup proves only a canary could be created, "
+         "written, and removed in that staging path; it does NOT prove daemon "
+         "materialization or MobileGestalt access.\n"];
     NSString *report = [documents stringByAppendingPathComponent:@"watchos26-installcoord-entry.txt"];
     NSError *saveError = nil;
     if (![out writeToFile:report atomically:YES encoding:NSUTF8StringEncoding error:&saveError])
