@@ -44,6 +44,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          CURRENT_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/watchos26-route-diagnostics" --jq '.object.sha')"
+          if [[ "$CURRENT_HEAD" != "$GITHUB_SHA" ]]; then
+            echo "Skip publishing stale build: $GITHUB_SHA != $CURRENT_HEAD"
+            exit 0
+          fi
           TAG="watchos26-all-in-one-test-20261113"
           IPA="build/ipa/HermesEnabler-watchOS26-route-tests.ipa"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
