@@ -28,6 +28,9 @@ struct ContentView: View {
                         NavigationLink { BackupView(model: model) } label: {
                             Label("MG Backups", systemImage: "archivebox")
                         }
+                        NavigationLink { RouteDiagnosticsView() } label: {
+                            Label("Route Tests (read only)", systemImage: "stethoscope")
+                        }
                     }
                     Section("Status") {
                         Text(LocalizedStringKey(model.message))

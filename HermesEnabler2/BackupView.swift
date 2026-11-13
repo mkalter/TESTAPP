@@ -86,6 +86,14 @@ struct BackupView: View {
                 }
             }
 
+            Section("Research diagnostics") {
+                NavigationLink {
+                    RouteDiagnosticsView()
+                } label: {
+                    Label("Class 13 / Class 12 tests", systemImage: "stethoscope")
+                }
+            }
+
             Section("Status") { Text(LocalizedStringKey(model.message))
                 .font(.footnote)
                 .foregroundStyle(.secondary) }
