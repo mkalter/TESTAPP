@@ -5,6 +5,7 @@ import SwiftUI
 struct RemoteWatchControlView: View {
     @ObservedObject var manager: WatchConnectivityManager
     @State private var localPhoneReport = "No iPhone-side audit yet."
+    @State private var hermesMigrationReport = "Not tested."
 
     struct Feature: Identifiable {
         let id: String
@@ -104,6 +105,25 @@ struct RemoteWatchControlView: View {
                 }
                 .disabled(manager.remoteBusy || !manager.isReachable)
                 Text(manager.remoteRelayReport)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+
+            Section("Hermès Migration Eligibility — iOS 27") {
+                Button {
+                    hermesMigrationReport = HERMESRunMigrationEligibilityProbe()
+                } label: {
+                    Label("Test Normal vs Migration Face Loading", systemImage: "arrow.left.arrow.right")
+                }
+                Text("Compares forMigration=NO/YES on the same CLKDevice for six Hermès bundle IDs. This runs only on the iPhone. No watch face is installed.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    UIPasteboard.general.string = hermesMigrationReport
+                } label: {
+                    Label("Copy Migration Report", systemImage: "doc.on.doc")
+                }
+                Text(hermesMigrationReport)
                     .font(.system(.caption2, design: .monospaced))
                     .textSelection(.enabled)
             }
