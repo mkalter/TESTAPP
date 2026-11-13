@@ -6,6 +6,9 @@ on:
       - watchos26-route-diagnostics
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -37,3 +40,19 @@ jobs:
           name: HermesEnabler-watchOS26-route-tests-unsigned
           path: build/ipa/HermesEnabler-watchOS26-route-tests.ipa
           if-no-files-found: error
+      - name: Publish direct IPA download in GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="watchos26-all-in-one-test-20261113"
+          IPA="build/ipa/HermesEnabler-watchOS26-route-tests.ipa"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPA" \
+              --title "HermesEnabler watchOS 26 All-in-One (Unsigned)" \
+              --notes "Experimental Apple Watch + iPhone app: individual WorstGestalt Class13, Geod Class12, original HermesEnabler fallbacks and explicit feature toggles with read-back checks. Requires separate signing with your own Apple developer profile. No claimed bypass on watchOS 26.6." \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
