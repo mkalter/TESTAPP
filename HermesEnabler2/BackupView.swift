@@ -1,0 +1,148 @@
+
+import SwiftUI
+
+struct BackupView: View {
+
+    let model: ContentModel
+
+    var body: some View {
+
+        List {
+
+            // Initial backup requirement
+            if !model.hasBackup {
+
+                Section("First Launch") {
+
+                    Text("An initial MobileGestalt backup is required before using any feature. It will be kept as the original and cannot be overwritten here.")
+
+                        .font(.footnote)
+
+                    Button("Create Initial Backup") {
+                        model.perform(.backup)
+                    }
+                }
+
+            } else {
+
+                Section("Create Backup") {
+
+                    Button("Back Up Current MG") {
+                        model.perform(.manualBackup)
+                    }
+
+                    Text("Every MG write and restore also creates an automatic backup first.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Backup library is always visible,
+            // including when only external backups exist.
+            Section("Backup Library") {
+
+                if model.backups.isEmpty {
+
+                    Text("No backups available.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                } else {
+
+                    ForEach(model.backups) { backup in
+
+                        Button {
+
+                            model.selectedBackupID = backup.id
+                            model.showRestoreConfirmation = true
+
+                        } label: {
+
+                            VStack(alignment: .leading, spacing: 4) {
+
+                                HStack {
+
+                                    Text(LocalizedStringKey(backup.kind + " Backup"))
+                                        .font(.body)
+
+                                    Spacer()
+
+                                    if backup.kind == "External" {
+                                        Text("IMPORTED")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+
+                                Text(backup.date.formatted(
+                                    date: .abbreviated,
+                                    time: .shortened
+                                ))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Status") { Text(LocalizedStringKey(model.message))
+                .font(.footnote)
+                .foregroundStyle(.secondary) }
+        }
+        .navigationTitle("MG Backups")
+        .onAppear {
+            model.refreshBackups()
+            model.showNextExternalBackup()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: Notification.Name("HermesExternalBackupReceived")
+            )
+        ) { _ in
+            model.showNextExternalBackup()
+        }
+        .onChange(of: model.showExternalImportConfirmation) { _, presented in
+            if !presented && model.advanceExternalBackupQueue {
+                model.advanceExternalBackupQueue = false
+                model.showNextExternalBackup()
+            }
+        }
+        .alert(
+            "New External Backup",
+            isPresented: Binding(
+                get: { model.showExternalImportConfirmation },
+                set: { model.showExternalImportConfirmation = $0 }
+            )
+        ) {
+
+            Button("Accept and Import") {
+                model.confirmExternalBackupImport()
+            }
+
+            Button("Reject", role: .destructive) {
+                model.rejectExternalBackupImport()
+            }
+
+            Button("Cancel", role: .cancel) {
+                model.rejectExternalBackupImport()
+            }
+
+        } message: {
+
+            Text(
+                """
+                A backup has been received from your iPhone.
+
+                File: \(model.pendingExternalBackupName)
+
+                SHA-256:
+                \(model.pendingExternalBackupSHA256)
+
+                The file will only be added to the backup library.
+                No MobileGestalt restoration will be performed.
+                """
+            )
+        }
+    }
+}
