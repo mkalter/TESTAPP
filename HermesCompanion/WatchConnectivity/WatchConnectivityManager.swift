@@ -213,6 +213,24 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         })
     }
 
+    func createInitialWatchBackup() {
+        remoteStatus = "Creating initial backup on Watch..."
+        sendWatchCommand(["command": "createBackup"]) { [weak self] result in
+            guard let self else { return }
+            self.remoteStatus = result["message"] as? String
+                ?? (result["error"] as? String ?? "Backup request failed.")
+        }
+    }
+
+    func restartWatchCarousel() {
+        remoteStatus = "Requesting Watch Carousel restart..."
+        sendWatchCommand(["command": "respring"]) { [weak self] result in
+            guard let self else { return }
+            self.remoteStatus = result["message"] as? String
+                ?? (result["error"] as? String ?? "Carousel restart request failed.")
+        }
+    }
+
     func runRemoteRouteScan() {
         remoteStatus = "Requesting individual route tests on Watch..."
         sendWatchCommand(["command": "routes"]) { [weak self] result in
