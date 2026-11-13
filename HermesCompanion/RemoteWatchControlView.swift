@@ -60,6 +60,26 @@ struct RemoteWatchControlView: View {
                 if manager.remoteBusy { ProgressView() }
             }
 
+            Section("Setup & Apply") {
+                Button {
+                    manager.createInitialWatchBackup()
+                } label: {
+                    Label("Create / Check Watch Backup", systemImage: "archivebox")
+                }
+                .disabled(manager.remoteBusy || !manager.isReachable)
+
+                Button {
+                    manager.restartWatchCarousel()
+                } label: {
+                    Label("Restart Watch Carousel", systemImage: "arrow.clockwise.circle")
+                }
+                .disabled(manager.remoteBusy || !manager.isReachable)
+
+                Text("Back up first, run the route scan, then change a feature. Restart Carousel or the Watch when required.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Sandbox Route Diagnostics") {
                 Button {
                     manager.runRemoteRouteScan()
