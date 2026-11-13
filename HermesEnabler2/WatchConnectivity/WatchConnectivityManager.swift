@@ -133,6 +133,128 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         print("[WC] Message received: \(message)")
     }
     
+
+    // MARK: - iPhone remote test and explicit feature controls
+    private let routeCommandQueue = DispatchQueue(label: "HermesEnabler.route.commands")
+
+    private func remoteReadFeature(_ key: String) -> [String: Any] {
+        var error: NSString?
+        var value = ObjCBool(false)
+        let success: Bool
+        switch key {
+        case "hermes": success = BQGetHermesEnabled(&value, &error)
+        case "ultraFaces": success = BQGetUltraFacesEnabled(&value, &error)
+        case "aod": success = BQGetAODSupport(&value, &error)
+        case "aodSeconds": success = BQGetAODSecondsSupport(&value, &error)
+        case "actionButton": success = BQGetActionButton(&value, &error)
+        case "doubleTap": success = BQGetDoubleTap(&value, &error)
+        case "depth": success = BQGetDepthCapability(&value, &error)
+        case "watchKeyboard": success = BQGetWatchKeyboard(&value, &error)
+        case "raiseToSpeak": success = BQGetRaiseToSpeak(&value, &error)
+        case "alwaysListening": success = BQGetAlwaysListening(&value, &error)
+        case "appleIntelligence": success = BQGetAppleIntelligence(&value, &error)
+        case "onDeviceSiri": success = BQGetOnDeviceSiri(&value, &error)
+        case "audioIntelligence": success = BQGetAudioIntelligence(&value, &error)
+        case "absoluteAltimeter": success = BQGetAbsoluteAltimeter(&value, &error)
+        case "alwaysOnCompass": success = BQGetAlwaysOnCompass(&value, &error)
+        case "aodVibrancy": success = BQGetAODVibrancy(&value, &error)
+        case "periodicALSUpdates": success = BQGetPeriodicALSUpdates(&value, &error)
+        case "continuousHeartRate": success = BQGetContinuousHeartRate(&value, &error)
+        case "compassOrienteering": success = BQGetCompassOrienteering(&value, &error)
+        case "environmentalDosimetry": success = BQGetEnvironmentalDosimetry(&value, &error)
+        case "batteryInformation": success = BQGetBatteryInformation(&value, &error)
+        case "rotateToWake": success = BQGetRotateToWake(&value, &error)
+        case "swimmingWorkouts": success = BQGetSwimmingWorkouts(&value, &error)
+        default:
+            return ["ok": false, "error": "Unknown feature: \(key)"]
+        }
+        return success
+            ? ["ok": true, "key": key, "enabled": value.boolValue]
+            : ["ok": false, "key": key, "error": (error as String?) ?? "Cannot read this feature"]
+    }
+
+    private func remoteWriteFeature(_ key: String, enabled: Bool) -> [String: Any] {
+        guard BQBackupExists() else {
+            return ["ok": false, "key": key, "error": "Create the initial MobileGestalt backup on the Watch first."]
+        }
+        var error: NSString?
+        let success: Bool
+        switch key {
+        case "hermes": success = BQSetHermesEnabled(enabled, &error)
+        case "ultraFaces": success = BQSetUltraFacesEnabled(enabled, &error)
+        case "aod": success = BQSetAODSupport(enabled, &error)
+        case "aodSeconds": success = BQSetAODSecondsSupport(enabled, &error)
+        case "actionButton": success = BQSetActionButton(enabled, &error)
+        case "doubleTap": success = BQSetDoubleTap(enabled, &error)
+        case "depth": success = BQSetDepthCapability(enabled, &error)
+        case "watchKeyboard": success = BQSetWatchKeyboard(enabled, &error)
+        case "raiseToSpeak": success = BQSetRaiseToSpeak(enabled, &error)
+        case "alwaysListening": success = BQSetAlwaysListening(enabled, &error)
+        case "appleIntelligence": success = BQSetAppleIntelligence(enabled, &error)
+        case "onDeviceSiri": success = BQSetOnDeviceSiri(enabled, &error)
+        case "audioIntelligence": success = BQSetAudioIntelligence(enabled, &error)
+        case "absoluteAltimeter": success = BQSetAbsoluteAltimeter(enabled, &error)
+        case "alwaysOnCompass": success = BQSetAlwaysOnCompass(enabled, &error)
+        case "aodVibrancy": success = BQSetAODVibrancy(enabled, &error)
+        case "periodicALSUpdates": success = BQSetPeriodicALSUpdates(enabled, &error)
+        case "continuousHeartRate": success = BQSetContinuousHeartRate(enabled, &error)
+        case "compassOrienteering": success = BQSetCompassOrienteering(enabled, &error)
+        case "environmentalDosimetry": success = BQSetEnvironmentalDosimetry(enabled, &error)
+        case "batteryInformation": success = BQSetBatteryInformation(enabled, &error)
+        case "rotateToWake": success = BQSetRotateToWake(enabled, &error)
+        case "swimmingWorkouts": success = BQSetSwimmingWorkouts(enabled, &error)
+        default:
+            return ["ok": false, "error": "Unknown feature: \(key)"]
+        }
+        if !success {
+            return ["ok": false, "key": key,
+                    "error": (error as String?) ?? "No writable MobileGestalt route found"]
+        }
+        // Re-read from the Watch, don't claim success just because a call returned.
+        let verified = remoteReadFeature(key)
+        if verified["ok"] as? Bool == true,
+           verified["enabled"] as? Bool == enabled {
+            return ["ok": true, "key": key, "enabled": enabled,
+                    "message": "Saved and read back on Watch. Restart may be required."]
+        }
+        return ["ok": false, "key": key, "error": "Write returned success but read-back did not match."]
+    }
+
+    func session(_ session: WCSession,
+                 didReceiveMessage message: [String: Any],
+                 replyHandler: @escaping ([String: Any]) -> Void) {
+        guard message["protocol"] as? String == "HermesRouteResearchV1",
+              let command = message["command"] as? String else {
+            replyHandler(["ok": false, "error": "Unrecognized command protocol"])
+            return
+        }
+        routeCommandQueue.async {
+            if !BQCoreInit() {
+                replyHandler(["ok": false, "error": "MobileContainerManager unavailable"])
+                return
+            }
+            switch command {
+            case "routes":
+                replyHandler(["ok": true, "report": BQRunRouteDiagnostics()])
+            case "readFeature":
+                guard let key = message["key"] as? String else {
+                    replyHandler(["ok": false, "error": "Missing feature key"])
+                    return
+                }
+                replyHandler(self.remoteReadFeature(key))
+            case "setFeature":
+                guard let key = message["key"] as? String,
+                      let enabled = message["enabled"] as? Bool else {
+                    replyHandler(["ok": false, "error": "Missing key / enabled"])
+                    return
+                }
+                replyHandler(self.remoteWriteFeature(key, enabled: enabled))
+            default:
+                replyHandler(["ok": false, "error": "Unsupported command"])
+            }
+        }
+    }
+
     struct PendingBackup {
         let id: String
         let data: Data
