@@ -236,6 +236,36 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             switch command {
             case "routes":
                 replyHandler(["ok": true, "report": BQRunRouteDiagnostics()])
+            case "relayProbe":
+                // Observe that the iPhone can request app-sandbox writes on the
+                // Watch, but this never confers permission for system-group files.
+                let marker = UUID().uuidString
+                let destination = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("watch-connectivity-relay-\(marker).txt")
+                let data = Data(marker.utf8)
+                do {
+                    try data.write(to: destination, options: .atomic)
+                    let verified = try Data(contentsOf: destination) == data
+                    try? FileManager.default.removeItem(at: destination)
+                    let protectedPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+                    errno = 0
+                    let fd = open(protectedPath, O_RDWR | O_CLOEXEC)
+                    let code = errno
+                    if fd >= 0 { close(fd) }
+                    replyHandler([
+                        "ok": verified,
+                        "report": """
+                        Phone → Watch command delivered: YES
+                        Watch app-sandbox write and read-back: \(verified ? "OK" : "FAILED")
+                        Temporary marker removed: YES (best effort)
+                        Watch MobileGestalt O_RDWR: \(fd >= 0 ? "OPEN OK" : "DENIED errno=\(code)")
+                        No protected system file was modified.
+                        """
+                    ])
+                } catch {
+                    replyHandler(["ok": false, "error": "App-sandbox relay test failed: \(error.localizedDescription)"])
+                }
+
             case "createBackup":
                 if BQBackupExists() {
                     replyHandler(["ok": true, "message": "Initial MobileGestalt backup already exists on Watch."])
