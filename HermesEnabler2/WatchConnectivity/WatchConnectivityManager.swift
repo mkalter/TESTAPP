@@ -238,6 +238,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
                 replyHandler(["ok": true, "report": BQRunDaemonWriteProbe()])
             case "routes":
                 replyHandler(["ok": true, "report": BQRunRouteDiagnostics()])
+            case "watchFaceEligibility":
+                replyHandler(["ok": true, "report": BQRunWatchFaceAvailabilityProbe()])
             case "relayProbe":
                 // Observe that the iPhone can request app-sandbox writes on the
                 // Watch, but this never confers permission for system-group files.

@@ -34,7 +34,7 @@ struct ContentView: View {
                             HStack {
                                 if activationRunning { ProgressView() }
                                 Label(activationRunning ? "Hermès voorbereiden…" :
-                                    "Activeer Hermès-wijzerplaat", systemImage: "clock.badge.checkmark")
+                                    "Exporteer Hermès-testwijzerplaat", systemImage: "clock.badge.checkmark")
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
@@ -42,7 +42,7 @@ struct ContentView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(activationRunning)
 
-                        Text("Maakt een echte Hermès-face, probeert de gekoppelde Watch-bibliotheek en biedt zo mogelijk een native .watchface aan om via Apple Watch toe te voegen.")
+                        Text("Maakt een native Hermès .watchface om te testen. Op watchOS 26 kan de Watch deze alsnog weigeren. Gebruik ‘Check Watch Hermès Compatibility’ voor de Watch-controles; dit is geen geverifieerde activatie.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Text(activationReport)

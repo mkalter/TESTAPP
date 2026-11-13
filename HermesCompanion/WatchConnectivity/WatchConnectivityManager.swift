@@ -22,6 +22,7 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
     @Published var remoteFeatureStates: [String: Bool] = [:]
     @Published var remoteRouteReport = "No route scan yet."
     @Published var remoteRelayReport = "No phone-to-watch relay test yet."
+    @Published var remoteFaceEligibilityReport = "No on-Watch Hermès eligibility check yet."
     @Published var remoteStatus = "Open HermesEnabler on the Watch to connect."
     @Published var remoteBusy = false
 
@@ -255,6 +256,20 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
                 self.remoteStatus = "Staging test completed. Read the per-directory write and cleanup results."
             } else {
                 self.remoteStatus = result["error"] as? String ?? "Staging test failed."
+            }
+        }
+    }
+
+    func runWatchHermesEligibilityCheck() {
+        remoteStatus = "Inspecting Hermès FaceBundle restrictions on Watch..."
+        sendWatchCommand(["command": "watchFaceEligibility"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let report = result["report"] as? String {
+                self.remoteFaceEligibilityReport = report
+                self.remoteStatus = "Watch eligibility report received."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Watch eligibility check failed."
             }
         }
     }

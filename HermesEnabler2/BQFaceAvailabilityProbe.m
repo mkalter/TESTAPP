@@ -4,6 +4,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 #import <sys/utsname.h>
+#import <string.h>
 #import <sys/sysctl.h>
 
 static BOOL HFHas(id obj, NSString *selector) {

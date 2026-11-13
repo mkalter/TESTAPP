@@ -128,6 +128,26 @@ struct RemoteWatchControlView: View {
                     .textSelection(.enabled)
             }
 
+            Section("Hermès Eligibility — ON WATCH") {
+                Text("A native .watchface can be exported from the iPhone yet rejected by watchOS. Measure the Watch's own FaceBundle and capability filters here.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    manager.runWatchHermesEligibilityCheck()
+                } label: {
+                    Label("Check Watch Hermès Compatibility", systemImage: "applewatch")
+                }
+                .disabled(manager.remoteBusy || !manager.isReachable)
+                Button {
+                    UIPasteboard.general.string = manager.remoteFaceEligibilityReport
+                } label: {
+                    Label("Copy Watch Eligibility Report", systemImage: "doc.on.doc")
+                }
+                Text(manager.remoteFaceEligibilityReport)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+
             Section("Sandbox Route Diagnostics") {
                 Button {
                     manager.runRemoteRouteScan()

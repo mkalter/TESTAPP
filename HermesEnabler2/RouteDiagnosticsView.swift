@@ -28,6 +28,14 @@ struct RouteDiagnosticsView: View {
                 .disabled(running)
                 .buttonStyle(.borderedProminent)
 
+                Text("Hermès Face Availability (on this Watch)")
+                    .font(.headline)
+                Text("Checks actual watchOS ClockKit/NanoTimeKit face restrictions. This is not the same as iPhone migration mode, and does not modify system files.")
+                    .font(.footnote)
+                Button("Check Hermès Restrictions") { runFaceCheck() }
+                    .disabled(running)
+                    .buttonStyle(.bordered)
+
                 Text("Alternate route: InstallCoordination")
                     .font(.headline)
                 Text("Tests real staging writes with unique temporary files, verifies their contents and removes them. Does not change MobileGestalt or start an installation.")
@@ -79,6 +87,18 @@ struct RouteDiagnosticsView: View {
         .navigationTitle("All Route Tests")
         .onAppear {
             if model.hasBackup { model.refreshCapabilityStates() }
+        }
+    }
+
+    private func runFaceCheck() {
+        guard !running else { return }
+        running = true
+        Task {
+            let output = await Task.detached(priority: .userInitiated) {
+                BQRunWatchFaceAvailabilityProbe() as String
+            }.value
+            report = output
+            running = false
         }
     }
 
