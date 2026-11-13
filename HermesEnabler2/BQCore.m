@@ -802,10 +802,89 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
         last = h;
     }
 
+    if (last >= 0) last = -5; // consumed but rejected as non-writable
     BQLog(@"escape: all strategies failed (last=%lld) target=%@", (long long)last, target);
     return last;
 }
 
+
+static NSString *bq_existing_open_result(NSString *root, NSString *name) {
+    NSString *file = [root stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    errno = 0;
+    int fd = open(file.fileSystemRepresentation, O_RDONLY | O_CLOEXEC);
+    int readError = errno;
+    if (fd >= 0) close(fd);
+    BOOL readable = fd >= 0;
+    errno = 0;
+    fd = open(file.fileSystemRepresentation, O_RDWR | O_CLOEXEC);
+    int writeError = errno;
+    if (fd >= 0) close(fd); // Never write a byte.
+    NSString *answer = [NSString stringWithFormat:@"%@: O_RDONLY=%@%@ O_RDWR=%@%@\n",
+        name,
+        readable ? @"OPEN OK" : @"DENIED",
+        readable ? @"" : [NSString stringWithFormat:@" errno=%d", readError],
+        fd >= 0 ? @"OPEN OK" : @"DENIED",
+        fd >= 0 ? @"" : [NSString stringWithFormat:@" errno=%d", writeError]];
+    BQLog(@"existing-route diagnostic %@", answer);
+    return answer;
+}
+
+// Do not run the potentially destructive Class-2 parent Library rename in
+// a bulk test, even if it was enabled elsewhere.
+NSString *BQRunExistingFallbackDiagnostics(void) {
+    NSMutableString *report = [NSMutableString stringWithString:
+        @"\n=== Original HermesEnabler fallback routes ===\n"];
+    if (!BQCoreInit()) {
+        [report appendString:@"MCM initialization failed; no original fallback tested\n"];
+        return report;
+    }
+    NSString *target = kMGCaches;
+    NSString *file = [target stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    struct { const char *name; int route; } checks[] = {
+        {"Class13 traversal (12 ../)", 0},
+        {"Class7 AppGroup part-symlink", 1},
+        {"Class2 staged symlink", 2},
+        {"Class2 subpath symlink", 3},
+        {"Geod Class12 legacy traversal (12 ../)", 4}
+    };
+    for (int i = 0; i < 5; i++) {
+        NSString *path = nil;
+        NSString *name = [NSString stringWithUTF8String:checks[i].name];
+        int64_t h = -1;
+        switch (checks[i].route) {
+            case 0:
+                h = bq_query_escape(13, kMGGroup, YES, 3,
+                                    [bq_dots(12) stringByAppendingString:target],
+                                    0x8100000000ULL, name, &path);
+                break;
+            case 1:
+                h = bq_escape_symlink(target, &path);
+                break;
+            case 2:
+                h = bq_escape_class2_stage(target, &path);
+                break;
+            case 3:
+                h = bq_escape_class2_subpath(target, &path);
+                break;
+            case 4:
+                h = bq_query_escape(12, @"com.apple.geod", NO, 3,
+                                    [bq_dots(12) stringByAppendingString:target],
+                                    0x8100000000ULL, name, &path);
+                break;
+        }
+        [report appendFormat:@"\n[%@] tokenConsume=%lld\n", name, (long long)h];
+        if (h >= 0) {
+            [report appendString:bq_existing_open_result(path ?: target, name)];
+            BQEndEscape(h); // Restore AppGroup/Library/Caches, release token.
+        } else {
+            [report appendString:@"No usable sandbox extension\n"];
+        }
+    }
+    [report appendString:
+        @"\n[Class2 parent Library rename] SKIPPED: dangerous, opt-in only; not part of bulk scan.\n"];
+    [report appendFormat:@"\nTarget file: %@\n", file];
+    return report;
+}
 static NSString *bq_escape_error(int64_t h) {
     if (h == -6) {
         return NSLocalizedString(@"no app group — open Settings → Class-2 fallback (experimental), enable it, then retry", nil);
