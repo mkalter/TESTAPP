@@ -11,7 +11,7 @@ struct RouteDiagnosticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("WatchOS 26 • Diagnostics v3")
+                Text("WatchOS 26 • Writer Tests")
                     .font(.headline)
                 Text("Tests MCM routes plus independent system entitlement, sandbox-policy, daemon-surface and filesystem checks. The Watch's protected MobileGestalt file is never changed by the scan.")
                     .font(.footnote)
@@ -27,6 +27,14 @@ struct RouteDiagnosticsView: View {
                 }
                 .disabled(running)
                 .buttonStyle(.borderedProminent)
+
+                Text("Alternate route: InstallCoordination")
+                    .font(.headline)
+                Text("Tests real staging writes with unique temporary files, verifies their contents and removes them. Does not change MobileGestalt or start an installation.")
+                    .font(.footnote)
+                Button("Test Daemon Staging Writes") { runDaemonTest() }
+                    .disabled(running)
+                    .buttonStyle(.bordered)
 
                 Divider()
 
@@ -71,6 +79,18 @@ struct RouteDiagnosticsView: View {
         .navigationTitle("All Route Tests")
         .onAppear {
             if model.hasBackup { model.refreshCapabilityStates() }
+        }
+    }
+
+    private func runDaemonTest() {
+        guard !running else { return }
+        running = true
+        Task {
+            let output = await Task.detached(priority: .userInitiated) {
+                BQRunDaemonWriteProbe() as String
+            }.value
+            report = output
+            running = false
         }
     }
 

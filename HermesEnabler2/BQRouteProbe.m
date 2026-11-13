@@ -321,3 +321,147 @@ NSString *BQRunRouteDiagnostics(void) {
     }
     return log;
 }
+
+
+// Alternate privileged-writer entry, based on the request contract documented at
+// https://github.com/0xjohnnydev/InstallCoordination-PoC
+// This tests ONLY staging access, not the promise graph or daemon materialization.
+// No payload, symlink, install request, or MobileGestalt change is performed.
+static BOOL BQMarkerRoundTrip(NSString *root, NSMutableString *out) {
+    int dir = open(root.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (dir < 0) {
+        [out appendFormat:@"directory open failed errno=%d (%s)\n", errno, strerror(errno)];
+        return NO;
+    }
+    NSString *name = [@".hermes-research-" stringByAppendingString:NSUUID.UUID.UUIDString];
+    const char *leaf = name.UTF8String;
+    int fd = openat(dir, leaf, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    int createError = errno;
+    if (fd < 0) {
+        [out appendFormat:@"marker create failed errno=%d (%s)\n", createError, strerror(createError)];
+        close(dir);
+        return NO;
+    }
+    // O_EXCL establishes ownership of this newly created name. Only this name
+    // is removed, relative to the same retained directory descriptor.
+    const char marker[] = "Hermes research canary; not an install promise\n";
+    size_t length = sizeof(marker) - 1, done = 0;
+    int writeError = 0;
+    while (done < length) {
+        ssize_t n = write(fd, marker + done, length - done);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) { writeError = n < 0 ? errno : EIO; break; }
+        done += (size_t)n;
+    }
+    // Reopen the created file, rather than just comparing the source buffer.
+    int readFD = openat(dir, leaf, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    char buffer[sizeof(marker)] = {0};
+    size_t received = 0;
+    if (readFD >= 0) {
+        struct stat original = {0}, reopened = {0};
+        BOOL same = fstat(fd, &original) == 0 && fstat(readFD, &reopened) == 0 &&
+            original.st_dev == reopened.st_dev && original.st_ino == reopened.st_ino &&
+            reopened.st_size == (off_t)length && S_ISREG(reopened.st_mode);
+        if (same) {
+            while (received < length) {
+                ssize_t n = read(readFD, buffer + received, length - received);
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                received += (size_t)n;
+            }
+        }
+        close(readFD);
+    }
+    BOOL verified = done == length && received == length && memcmp(buffer, marker, length) == 0;
+    close(fd);
+    int removed = unlinkat(dir, leaf, 0);
+    int removeError = removed == 0 ? 0 : errno;
+    struct stat remaining = {0};
+    errno = 0;
+    int remains = fstatat(dir, leaf, &remaining, AT_SYMLINK_NOFOLLOW);
+    BOOL absent = remains == -1 && errno == ENOENT;
+    [out appendFormat:@"marker write=%@ bytes=%lu writeErrno=%d readback=%@ removed=%@ absent=%@\n",
+        done == length ? @"YES" : @"NO", (unsigned long)done, writeError,
+        verified ? @"YES" : @"NO", removed == 0 ? @"YES" : @"NO", absent ? @"YES" : @"NO"];
+    if (removed != 0 || !absent)
+        [out appendFormat:@"CLEANUP NOT VERIFIED: %@/%@ errno=%d\n", root, name, removeError];
+    close(dir);
+    return verified && removed == 0 && absent;
+}
+
+NSString *BQRunDaemonWriteProbe(void) {
+    NSMutableString *out = [NSMutableString stringWithString:
+        @"INSTALLCOORDINATION ENTRY TEST v1\n"
+         "Creates, verifies and removes unique canaries. Does not stage an install graph or modify MobileGestalt.\n"];
+    [out appendFormat:@"time=%@ OS=%@\n", [NSDate date], NSProcessInfo.processInfo.operatingSystemVersionString];
+    NSString *documents = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:documents withIntermediateDirectories:YES attributes:nil error:nil];
+    [out appendString:@"\nCONTROL: own Documents\n"];
+    BOOL control = BQMarkerRoundTrip(documents, out);
+    BQProbeAPI api = BQLoadProbeAPI();
+    BOOL symbols = api.create && api.setClass && api.setGroupIdentifiers &&
+        api.setFlags && api.setPart && api.setDomain && api.getResult && api.getPath &&
+        api.copyToken && api.consumeToken && api.releaseToken && api.freeQuery &&
+        api.createXPCString && api.releaseXPCObject;
+    if (!control || !symbols) {
+        [out appendFormat:@"STOP: control=%@ MCM symbols=%@; staging tests not run\n",
+            control ? @"PASS" : @"FAIL", symbols ? @"YES" : @"NO"];
+    } else {
+        NSString *base = @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.installcoordinationd/Library/InstallCoordination";
+        NSArray<NSString *> *parts = @[@"PromiseStaging", @"DataPromises", @"Coordinators"];
+        uint64_t flags[] = {UINT64_C(0x8100000000), UINT64_C(0x0900000000)};
+        for (unsigned variant = 0; variant < 2; ++variant) {
+            unsigned passed = 0;
+            [out appendFormat:@"\nREQUEST VARIANT flags=0x%llx\n", (unsigned long long)flags[variant]];
+            for (NSString *part in parts) {
+                NSString *expected = [base stringByAppendingPathComponent:part];
+                [out appendFormat:@"\n[%@] baseline\n", part];
+                BOOL before = BQMarkerRoundTrip(expected, out);
+                void *q = api.create();
+                if (!q) { [out appendString:@"query allocation failed\n"]; continue; }
+                void *identifier = api.createXPCString("systemgroup.com.apple.installcoordinationd");
+                if (!identifier) { api.freeQuery(q); [out appendString:@"identifier allocation failed\n"]; continue; }
+                api.setClass(q, 13);
+                api.setGroupIdentifiers(q, identifier);
+                api.releaseXPCObject(identifier);
+                api.setPart(q, 3);
+                NSString *domain = [@"../InstallCoordination" stringByAppendingPathComponent:part];
+                api.setDomain(q, domain.UTF8String);
+                api.setFlags(q, flags[variant]);
+                void *result = api.getResult(q);
+                const char *raw = result ? api.getPath(result) : NULL;
+                NSString *returned = raw ? [NSString stringWithUTF8String:raw] : nil;
+                NSString *normalized = returned.stringByStandardizingPath;
+                if ([normalized hasPrefix:@"/var/"]) normalized = [@"/private" stringByAppendingString:normalized];
+                BOOL matches = [normalized isEqualToString:expected];
+                char *token = result ? api.copyToken(result) : NULL;
+                int64_t handle = token && matches ? api.consumeToken(token) : -1;
+                [out appendFormat:@"result=%@ expectedPath=%@ token=%@ consumed=%lld\n",
+                    result ? @"YES" : @"NO", matches ? @"YES" : @"NO",
+                    token ? @"YES" : @"NO", (long long)handle];
+                void *error = api.lastError ? api.lastError(q) : NULL;
+                if (error) {
+                    const char *msg = api.errorMessage ? api.errorMessage(error) : NULL;
+                    [out appendFormat:@"query error posix=%d message=%s\n",
+                        api.errorPosix ? api.errorPosix(error) : 0, msg ?: "(none)"];
+                }
+                BOOL after = NO;
+                if (handle >= 0) after = BQMarkerRoundTrip(expected, out);
+                if (before || after) ++passed;
+                [out appendFormat:@"staging write verified=%@ new access after token=%@\n",
+                    before || after ? @"YES" : @"NO", !before && after ? @"YES" : @"NO"];
+                if (handle >= 0) [out appendFormat:@"token release=%lld\n", (long long)api.releaseToken(handle)];
+                free(token);
+                api.freeQuery(q);
+            }
+            [out appendFormat:@"STAGING PREREQUISITES: %u/3 verified in separate leases\n", passed];
+        }
+    }
+    [out appendString:@"\n0/3 = tested entry unavailable; 3/3 = staging access only, NOT proof of daemon write or MobileGestalt access.\n"];
+    NSString *report = [documents stringByAppendingPathComponent:@"watchos26-installcoord-entry.txt"];
+    NSError *saveError = nil;
+    if (![out writeToFile:report atomically:YES encoding:NSUTF8StringEncoding error:&saveError])
+        [out appendFormat:@"report save failed: %@\n", saveError];
+    else [out appendFormat:@"Report saved: %@\n", report];
+    return out;
+}

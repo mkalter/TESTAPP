@@ -234,6 +234,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
                 return
             }
             switch command {
+            case "daemonStagingWriteTest":
+                replyHandler(["ok": true, "report": BQRunDaemonWriteProbe()])
             case "routes":
                 replyHandler(["ok": true, "report": BQRunRouteDiagnostics()])
             case "relayProbe":
