@@ -15,6 +15,9 @@ jobs:
         run: |
           xcodebuild -version
           xcodebuild -showsdks
+      - name: Convert Xcode project format for older CI runner (temporary only)
+        run: |
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' HermesEnabler2.xcodeproj/project.pbxproj
       - name: Compile the Watch application without signing
         run: |
           xcodebuild \
