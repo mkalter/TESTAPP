@@ -10,7 +10,7 @@ Sign the iPhone host and embedded Watch app with your own provisioning credentia
 
 ## Single Run All Routes operation
 
-The Watch executes eleven individually selected MCM query variants:
+The Watch executes eleven original route variants, sixteen MCM container/flag controls, three alternative entry-container probes, and an independent sandbox audit. Main routes:
 
 1. WorstGestalt file Class 13 via /var alias, flags 0x8000000000.
 2. WorstGestalt file Class 13 via /private/var, flags 0x8000000000.
@@ -48,3 +48,25 @@ Sources:
 ## Flag differential - 13 November 2026
 
 The Watch6,18 / watchOS 26.6 log demonstrated that flags 0x8000000000 and 0x8100000000 return NO TOKEN or no Geod container, and the protected plist permits O_RDONLY but denies O_RDWR (EPERM). A separately published Series 8 watchOS 26.6.1 test obtained a consumable system-group token with DIFFERENT flags 0x0800000000; the sandbox still denied O_RDWR. This build now checks both lower-flag forms explicitly. The editor also tries lower-flag direct Class 13, but only accepts it when the real protected file passes an O_RDWR check. See https://github.com/pookjw/HermesEnabler/issues/7#issuecomment-6761033695 .
+
+## v3 — Independent attack-surface diagnostics
+
+The scan now includes:
+
+* Sandbox permissions: passive sandbox_check comparison of read, write, create, and unlink on Watch's protected MobileGestalt cache and harmless own-app controls. These are policy hints; open(O_RDWR) is the final evidence.
+* Signed entitlements: read-only SecTask inspection of the installed Watch app's application/system-group capabilities and candidate private entitlement keys. Unavailable APIs are reported explicitly.
+* Vnode/permissions: stat, lstat, ownership, mode, inode, aliases, open(O_RDONLY), open(O_WRONLY), and open(O_RDWR) with O_NOFOLLOW. No bytes are written to system files.
+* Daemon surface: passive mach-lookup policy checks for MobileGestalt, containermanagerd, geod, installcoordinationd and backups plus executable visibility checks. An ALLOW policy is not proof of daemon existence or exploitable XPC interface.
+* New entry containers: Class 13 InstallCoordination (direct and DataPromises domain) and Class 12 eligibilityd NeverRestore requests; no promise graph, symlinks, persisted state or daemon-write operations are staged.
+* iPhone iOS 27 differential: local iPhone MobileGestalt access control and controlled iPhone-to-Watch file relay using only a temporary Watch-app file, followed by protected Watch O_RDWR check.
+* Evidence collection: labeled results, errors, and Copy Watch Report on iPhone.
+
+The read-only scan is distinct from optional feature toggles, which require a backup, verified O_RDWR and post-write verification.
+
+Watch Ultra 1 is not listed for watchOS 27, so upgrading the Watch to exploit watchOS 27 behavior is not a realistic solution for this hardware.
+
+References:
+* https://github.com/0xjohnnydev/InstallCoordination-PoC
+* https://github.com/0xjohnnydev/MobileHouseArrest-PoC
+* https://developer.apple.com/documentation/watchconnectivity/wcsessiondelegate
+* https://support.apple.com/guide/watch/restore-apple-watch-from-a-backup-apdaa8cc32e8/26/watchos/26

@@ -5,15 +5,15 @@ import SwiftUI
 struct RouteDiagnosticsView: View {
     let model: ContentModel
 
-    @State private var report = "Diagnostics v2 compares token types, container root versus Caches, Geod direct access and the existing routes. Each query reports errors and file-open permissions."
+    @State private var report = "Diagnostics v3 compares token types, container root versus Caches, Geod direct access and the existing routes. Each query reports errors and file-open permissions."
     @State private var running = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("WatchOS 26 • Diagnostics v2")
+                Text("WatchOS 26 • Diagnostics v3")
                     .font(.headline)
-                Text("Compares WorstGestalt Class 13, HermesEnabler legacy Class 13, Geod Class 12, Class 7 and Class 2. Checks O_RDONLY / O_RDWR without changing system files.")
+                Text("Tests MCM routes plus independent system entitlement, sandbox-policy, daemon-surface and filesystem checks. The Watch's protected MobileGestalt file is never changed by the scan.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
