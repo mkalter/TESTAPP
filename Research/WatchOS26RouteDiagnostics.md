@@ -17,8 +17,8 @@ The probe prints: query result, returned path, sandbox token availability, token
 
 - Build and install the Watch app using Xcode and your own provisioning profile.
 - Open **HermesEnabler → Route Tests**, or access the same view from **MG Backups** on a fresh install.
-- Tap **Run Tests**.
-- Capture the full output including watchOS build and all four probe results. Do not share the contents of the actual MobileGestalt cache.
+- Tap **Run All Routes**.
+- Capture the full output including watchOS build and all eleven route results. Do not share the contents of the actual MobileGestalt cache.
 
 **Interpretation:** \`token=YES\` is not success, \`consume>=0\` is not success, and \`O_RDONLY OPEN OK\` is not success. Only \`O_RDWR OPEN OK\` demonstrates writable-open permission; **no test writes anything**.
 
@@ -34,3 +34,5 @@ References:
 - https://github.com/GoldenNugget-Team/worstgestalt/blob/main/Sources/WorseGestalt/BQCore.swift
 - https://github.com/0xjohnnydev/Geod-MCM-PoC
 - https://github.com/pookjw/HermesEnabler
+
+2026-11-13 follow-up: A Series 8 researcher reported that `0x0800000000` returns a consumable `com.apple.sandbox.system-group` token but still denies `O_RDWR` due to system-group entitlement rules. Source: https://github.com/pookjw/HermesEnabler/issues/7#issuecomment-6761033695 .

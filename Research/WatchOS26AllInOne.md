@@ -10,17 +10,19 @@ Sign the iPhone host and embedded Watch app with your own provisioning credentia
 
 ## Single Run All Routes operation
 
-The Watch executes nine individually selected MCM query variants:
+The Watch executes eleven individually selected MCM query variants:
 
 1. WorstGestalt file Class 13 via /var alias, flags 0x8000000000.
 2. WorstGestalt file Class 13 via /private/var, flags 0x8000000000.
 3. HermesEnabler direct Class 13, flags 0x8100000000.
-4. Geod Class 12 published six-level traversal.
-5. HermesEnabler legacy Class 13 twelve-level traversal.
-6. Class 7 App Group Caches symlink.
-7. Class 2 staged symlink.
-8. Class 2 subpath symlink.
-9. Geod Class 12 legacy twelve-level traversal.
+4. Direct system-group Class 13, LOWER flags 0x0800000000.
+5. Per-file Class 13, LOWER flags 0x0800000000.
+6. Geod Class 12 published six-level traversal.
+7. HermesEnabler legacy Class 13 twelve-level traversal.
+8. Class 7 App Group Caches symlink.
+9. Class 2 staged symlink.
+10. Class 2 subpath symlink.
+11. Geod Class 12 legacy twelve-level traversal.
 
 The Class 2 parent-Library rename is not run automatically because it can kill or destabilize the app. Bulk testing never writes to the protected cache. Each test logs extension results and O_RDONLY / O_RDWR access without writing bytes.
 
@@ -42,3 +44,7 @@ Sources:
 - https://github.com/GoldenNugget-Team/worstgestalt
 - https://github.com/0xjohnnydev/Geod-MCM-PoC
 - https://github.com/pookjw/HermesEnabler
+
+## Flag differential - 13 November 2026
+
+The Watch6,18 / watchOS 26.6 log demonstrated that flags 0x8000000000 and 0x8100000000 return NO TOKEN or no Geod container, and the protected plist permits O_RDONLY but denies O_RDWR (EPERM). A separately published Series 8 watchOS 26.6.1 test obtained a consumable system-group token with DIFFERENT flags 0x0800000000; the sandbox still denied O_RDWR. This build now checks both lower-flag forms explicitly. The editor also tries lower-flag direct Class 13, but only accepts it when the real protected file passes an O_RDWR check. See https://github.com/pookjw/HermesEnabler/issues/7#issuecomment-6761033695 .
