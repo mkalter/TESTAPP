@@ -5,13 +5,13 @@ import SwiftUI
 struct RouteDiagnosticsView: View {
     let model: ContentModel
 
-    @State private var report = "Run All Routes checks eleven independent MCM route variants; the risky Class-2 parent route is intentionally skipped."
+    @State private var report = "Diagnostics v2 compares token types, container root versus Caches, Geod direct access and the existing routes. Each query reports errors and file-open permissions."
     @State private var running = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("WatchOS 26 • All Route Tests")
+                Text("WatchOS 26 • Diagnostics v2")
                     .font(.headline)
                 Text("Compares WorstGestalt Class 13, HermesEnabler legacy Class 13, Geod Class 12, Class 7 and Class 2. Checks O_RDONLY / O_RDWR without changing system files.")
                     .font(.footnote)
