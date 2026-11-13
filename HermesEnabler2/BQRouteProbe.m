@@ -285,6 +285,21 @@ NSString *BQRunRouteDiagnostics(void) {
                12, @"com.apple.geod", NO, geodDomain,
                UINT64_C(0x8100000000), privatePath);
 
+    // Alternative *entry containers*, not more MobileGestalt flag guesses.
+    // This only requests metadata/extensions: it never creates or modifies
+    // any InstallCoordination or eligibilityd state. Their presence is NOT a
+    // working confused-deputy exploit.
+    BQRunQuery(log, &api, @"InstallCoordination Class13 direct entry only",
+               13, @"systemgroup.com.apple.installcoordinationd", YES, @"",
+               UINT64_C(0x8100000000), privatePath);
+    BQRunQuery(log, &api, @"InstallCoordination Class13 DataPromises traversal (NO WRITE)",
+               13, @"systemgroup.com.apple.installcoordinationd", YES,
+               @"../InstallCoordination/DataPromises",
+               UINT64_C(0x8000000000), privatePath);
+    BQRunQuery(log, &api, @"Eligibilityd Class12 NeverRestore (NO WRITE)",
+               12, @"com.apple.eligibilityd", NO, @"NeverRestore",
+               UINT64_C(0x8100000000), privatePath);
+
     // Extend the same run with every original selectable fallback.
     [log appendString:BQRunExistingFallbackDiagnostics()];
     [log appendString:BQSystemAudit()];
