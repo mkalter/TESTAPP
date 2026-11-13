@@ -116,7 +116,7 @@ struct ContentView: View {
         HERMESAttemptFaceActivation { report, fileURL in
             DispatchQueue.main.async {
                 activationRunning = false
-                activationReport = report
+                activationReport = report ?? "Geen rapport ontvangen van NanoTimeKit."
                 if let fileURL {
                     shareURL = ShareItem(url: fileURL)
                 }
