@@ -26,7 +26,6 @@ struct RouteDiagnosticsView: View {
 
                 Text(report)
                     .font(.system(size: 10, design: .monospaced))
-                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding()
