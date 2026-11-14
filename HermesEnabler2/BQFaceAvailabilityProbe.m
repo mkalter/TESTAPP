@@ -6,6 +6,7 @@
 #import <sys/utsname.h>
 #import <string.h>
 #import <sys/sysctl.h>
+#import <stdbool.h>
 
 static BOOL HFHas(id obj, NSString *selector) {
     return obj && [obj respondsToSelector:NSSelectorFromString(selector)];
@@ -14,14 +15,54 @@ static id HFSend0(id obj, NSString *selector) {
     if (!HFHas(obj, selector)) return nil;
     return ((id (*)(id,SEL))objc_msgSend)(obj, NSSelectorFromString(selector));
 }
-static long long HFGetInt(id obj, NSString *selector, long long fallback) {
-    if (!HFHas(obj, selector)) return fallback;
-    return ((long long (*)(id,SEL))objc_msgSend)(obj, NSSelectorFromString(selector));
-}
-static BOOL HFGetBool(id obj, NSString *selector, BOOL *value) {
-    if (!HFHas(obj, selector)) return NO;
-    if (value) *value = ((BOOL (*)(id,SEL))objc_msgSend)(obj, NSSelectorFromString(selector));
-    return YES;
+// Private getters have different return ABIs on different OS builds.
+// In particular deviceBrand may return an NSNumber, not an integer.
+static NSString *HFPropertyDescription(id object, NSString *name) {
+    SEL selector = NSSelectorFromString(name);
+    if (!HFHas(object, name)) return @"NOT EXPOSED";
+    @try {
+        NSMethodSignature *signature = [object methodSignatureForSelector:selector];
+        if (!signature || signature.numberOfArguments != 2) return @"UNSUPPORTED SIGNATURE";
+        const char *type = signature.methodReturnType;
+        while (*type && strchr("rnNoORV", *type)) ++type;
+        if (!*type) return @"UNKNOWN RETURN TYPE";
+        NSInvocation *call = [NSInvocation invocationWithMethodSignature:signature];
+        call.target = object;
+        call.selector = selector;
+        // Only invoke supported scalar/object getters.
+        if (!strchr("@BcCsSiIlLqQ", *type))
+            return [NSString stringWithFormat:@"UNSUPPORTED RETURN TYPE (%s)", type];
+        [call invoke];
+        if (*type == '@') {
+            __unsafe_unretained id value = nil;
+            [call getReturnValue:&value];
+            if (!value) return @"nil (object)";
+            if ([value isKindOfClass:NSNumber.class])
+                return [NSString stringWithFormat:@"%@ (NSNumber)", [value stringValue]];
+            return [NSString stringWithFormat:@"OBJECT (%@), not numeric", NSStringFromClass([value class])];
+        }
+#define HF_RETURN_CASE(encoding, nativeType) \
+        case encoding: { nativeType value = 0; \
+            [call getReturnValue:&value]; \
+            return [NSString stringWithFormat:@"%@ (scalar %c)", @(value), *type]; }
+        switch (*type) {
+            HF_RETURN_CASE('B', bool)
+            HF_RETURN_CASE('c', signed char)
+            HF_RETURN_CASE('C', unsigned char)
+            HF_RETURN_CASE('s', short)
+            HF_RETURN_CASE('S', unsigned short)
+            HF_RETURN_CASE('i', int)
+            HF_RETURN_CASE('I', unsigned int)
+            HF_RETURN_CASE('l', long)
+            HF_RETURN_CASE('L', unsigned long)
+            HF_RETURN_CASE('q', long long)
+            HF_RETURN_CASE('Q', unsigned long long)
+        }
+#undef HF_RETURN_CASE
+        return @"UNSUPPORTED RETURN TYPE";
+    } @catch (NSException *exception) {
+        return [NSString stringWithFormat:@"GETTER EXCEPTION (%@)", exception.name];
+    }
 }
 static id HFBundle(id manager, NSString *identifier, id device, BOOL migrating) {
     NSString *selector = @"faceBundleForBundleIdentifier:onDevice:forMigration:";
@@ -68,9 +109,7 @@ NSString *BQRunWatchFaceAvailabilityProbe(void) {
             @"supportsHermesFaces", @"supportsHermesFacesCapability"
         ]) {
             [out appendFormat:@"CLKDevice.%@ = %@\n", selector,
-                HFHas(device, selector) ?
-                    [NSString stringWithFormat:@"%lld", HFGetInt(device, selector, -1)] :
-                    @"NOT EXPOSED"];
+                HFPropertyDescription(device, selector)];
         }
     }
 
