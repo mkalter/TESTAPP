@@ -18,6 +18,14 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
     @Published var isWatchAppInstalled = false
     @Published var isReachable = false
 
+    // MARK: - Remote Watch control
+    @Published var remoteFeatureStates: [String: Bool] = [:]
+    @Published var remoteRouteReport = "No route scan yet."
+    @Published var remoteRelayReport = "No phone-to-watch relay test yet."
+    @Published var remoteFaceEligibilityReport = "No on-Watch Hermès eligibility check yet."
+    @Published var remoteStatus = "Open HermesEnabler on the Watch to connect."
+    @Published var remoteBusy = false
+
     // MARK: - Watch information
 
     @Published var deviceName = "Apple Watch"
@@ -177,6 +185,134 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         session.activate()
 
         print("[WC] iPhone session activation requested")
+    }
+
+    // MARK: - Explicit iPhone -> Watch requests
+    // All sandbox probes and MobileGestalt changes execute on the Watch.
+    private func sendWatchCommand(_ args: [String: Any],
+                                  completion: @escaping ([String: Any]) -> Void) {
+        guard !remoteBusy else {
+            remoteStatus = "A Watch request is already running."
+            return
+        }
+        guard let session, session.activationState == .activated, session.isReachable else {
+            remoteStatus = "Watch not reachable. Open HermesEnabler on the Watch and retry."
+            return
+        }
+        remoteBusy = true
+        var payload = args
+        payload["protocol"] = "HermesRouteResearchV1"
+        session.sendMessage(payload, replyHandler: { [weak self] result in
+            Task { @MainActor [weak self] in
+                self?.remoteBusy = false
+                completion(result)
+            }
+        }, errorHandler: { [weak self] error in
+            Task { @MainActor [weak self] in
+                self?.remoteBusy = false
+                self?.remoteStatus = error.localizedDescription
+            }
+        })
+    }
+
+    func createInitialWatchBackup() {
+        remoteStatus = "Creating initial backup on Watch..."
+        sendWatchCommand(["command": "createBackup"]) { [weak self] result in
+            guard let self else { return }
+            self.remoteStatus = result["message"] as? String
+                ?? (result["error"] as? String ?? "Backup request failed.")
+        }
+    }
+
+    func restartWatchCarousel() {
+        remoteStatus = "Requesting Watch Carousel restart..."
+        sendWatchCommand(["command": "respring"]) { [weak self] result in
+            guard let self else { return }
+            self.remoteStatus = result["message"] as? String
+                ?? (result["error"] as? String ?? "Carousel restart request failed.")
+        }
+    }
+
+    func testPhoneToWatchRelay() {
+        remoteStatus = "Testing phone-to-watch app-sandbox relay..."
+        sendWatchCommand(["command": "relayProbe"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let report = result["report"] as? String {
+                self.remoteRelayReport = report
+                self.remoteStatus = "Relay test completed. Check the boundary report."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Relay test failed."
+            }
+        }
+    }
+
+    func runRemoteDaemonWriteTest() {
+        remoteStatus = "Testing InstallCoordination staging writes on Watch..."
+        sendWatchCommand(["command": "daemonStagingWriteTest"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true, let report = result["report"] as? String {
+                self.remoteRouteReport = report
+                self.remoteStatus = "Staging test completed. Read the per-directory write and cleanup results."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Staging test failed."
+            }
+        }
+    }
+
+    func runWatchHermesEligibilityCheck() {
+        remoteStatus = "Inspecting Hermès FaceBundle restrictions on Watch..."
+        sendWatchCommand(["command": "watchFaceEligibility"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let report = result["report"] as? String {
+                self.remoteFaceEligibilityReport = report
+                self.remoteStatus = "Watch eligibility report received."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Watch eligibility check failed."
+            }
+        }
+    }
+
+    func runRemoteRouteScan() {
+        remoteStatus = "Requesting individual route tests on Watch..."
+        sendWatchCommand(["command": "routes"]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let report = result["report"] as? String {
+                self.remoteRouteReport = report
+                self.remoteStatus = "Scan complete. Look for O_RDWR OPEN OK."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Route scan failed."
+            }
+        }
+    }
+
+    func refreshRemoteFeature(_ key: String) {
+        sendWatchCommand(["command": "readFeature", "key": key]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let enabled = result["enabled"] as? Bool {
+                self.remoteFeatureStates[key] = enabled
+                self.remoteStatus = "\(key): \(enabled ? "enabled" : "disabled") on Watch"
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Could not read \(key)"
+            }
+        }
+    }
+
+    func setRemoteFeature(_ key: String, enabled: Bool) {
+        remoteStatus = "Applying \(key) on the Watch..."
+        sendWatchCommand(["command": "setFeature", "key": key, "enabled": enabled]) { [weak self] result in
+            guard let self else { return }
+            if result["ok"] as? Bool == true,
+               let confirmed = result["enabled"] as? Bool {
+                self.remoteFeatureStates[key] = confirmed
+                self.remoteStatus = result["message"] as? String ?? "Saved and verified on Watch."
+            } else {
+                self.remoteStatus = result["error"] as? String ?? "Feature change rejected."
+            }
+        }
     }
 
     // MARK: - History

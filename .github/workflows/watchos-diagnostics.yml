@@ -1,0 +1,63 @@
+name: Build watchOS route diagnostics
+
+on:
+  push:
+    branches:
+      - watchos26-route-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print selected Xcode and watchOS SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Convert Xcode project format for older CI runner (temporary only)
+        run: |
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' HermesEnabler2.xcodeproj/project.pbxproj
+      - name: Compile the Watch application without signing
+        run: |
+          xcodebuild \
+            -project HermesEnabler2.xcodeproj \
+            -scheme HermesEnabler2 \
+            -configuration Debug \
+            -destination 'generic/platform=watchOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Package unsigned iPhone + Watch testing IPA
+        run: |
+          bash scripts/create_ipa.sh \
+            --output build/ipa/HermesEnabler-watchOS26-route-tests.ipa
+      - name: Upload unsigned test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-watchOS26-route-tests-unsigned
+          path: build/ipa/HermesEnabler-watchOS26-route-tests.ipa
+          if-no-files-found: error
+      - name: Publish direct IPA download in GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CURRENT_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/watchos26-route-diagnostics" --jq '.object.sha')"
+          if [[ "$CURRENT_HEAD" != "$GITHUB_SHA" ]]; then
+            echo "Skip publishing stale build: $GITHUB_SHA != $CURRENT_HEAD"
+            exit 0
+          fi
+          TAG="watchos26-all-in-one-test-20261113"
+          IPA="build/ipa/HermesEnabler-watchOS26-route-tests.ipa"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPA" \
+              --title "HermesEnabler watchOS 26 All-in-One (Unsigned)" \
+              --notes "Experimental Apple Watch + iPhone app: individual WorstGestalt Class13, Geod Class12, original HermesEnabler fallbacks and explicit feature toggles with read-back checks. Requires separate signing with your own Apple developer profile. No claimed bypass on watchOS 26.6." \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --repo "$GITHUB_REPOSITORY"
+          fi

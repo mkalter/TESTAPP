@@ -8,6 +8,8 @@ struct ContentView: View {
     @StateObject private var watchManager = WatchConnectivityManager()
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var activationRunning = false
+    @State private var activationReport = "Hermès-activering nog niet geprobeerd."
     @State private var showingHistory = false
     @State private var showingImporter = false
     @State private var shareURL: ShareItem?
@@ -24,7 +26,40 @@ struct ContentView: View {
 
                     WatchDeviceCard(watchManager: watchManager)
                     WatchInstallationCard(watchManager: watchManager)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button {
+                            activateHermes()
+                        } label: {
+                            HStack {
+                                if activationRunning { ProgressView() }
+                                Label(activationRunning ? "Hermès voorbereiden…" :
+                                    "Exporteer Hermès-testwijzerplaat", systemImage: "clock.badge.checkmark")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(activationRunning)
+
+                        Text("Maakt een native Hermès .watchface om te testen. Op watchOS 26 kan de Watch deze alsnog weigeren. Gebruik ‘Check Watch Hermès Compatibility’ voor de Watch-controles; dit is geen geverifieerde activatie.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(activationReport)
+                            .font(.system(.caption2, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
                     LatestBackupCard(watchManager: watchManager)
+
+                    NavigationLink {
+                        RemoteWatchControlView(manager: watchManager)
+                    } label: {
+                        Label("Watch Tests & Feature Switches", systemImage: "applewatch.side.right")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
 
                     actionButtons
                 }
@@ -68,6 +103,23 @@ struct ContentView: View {
             if newPhase == .active {
                 watchManager.refreshConnectionStatus()
                 watchManager.loadBackupHistory()
+            }
+        }
+    }
+
+    // MARK: - Hermès activation
+
+    private func activateHermes() {
+        guard !activationRunning else { return }
+        activationRunning = true
+        activationReport = "Maakt een native Hermès-wijzerplaat en bereidt import voor…"
+        HERMESAttemptFaceActivation { report, fileURL in
+            DispatchQueue.main.async {
+                activationRunning = false
+                activationReport = report ?? "Geen rapport ontvangen van NanoTimeKit."
+                if let fileURL {
+                    shareURL = ShareItem(url: fileURL)
+                }
             }
         }
     }

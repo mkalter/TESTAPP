@@ -16,6 +16,8 @@ dispatch_queue_t BQWorkQueue(void);
 
 // ---- init ------------------------------------------------------------------
 BOOL BQCoreInit(void);
+// Non-mutating, individually selected checks for original HermesEnabler fallbacks.
+NSString *BQRunExistingFallbackDiagnostics(void);
 
 // ---- sandbox escape lease --------------------------------------------------
 // Escape to `target` (an MCM container or a directory inside one). On success
