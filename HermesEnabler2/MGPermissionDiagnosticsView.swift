@@ -40,6 +40,19 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
+                Button("Run write-authorization matrix") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunWriteGateDiagnostics()
+                        await MainActor.run {
+                            report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 if running {
                     ProgressView()
                 }
