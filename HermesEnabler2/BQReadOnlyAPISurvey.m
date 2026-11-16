@@ -29,15 +29,17 @@ static NSString *BQProbeLib(NSString *name, NSString *path,
 
 NSString *BQRunReadOnlyAPISurvey(void) {
     NSMutableArray<NSString *> *out = [NSMutableArray arrayWithObjects:
-        @"=== watchOS 26 alternate API survey v1 ===",
+        @"=== watchOS 26 alternate API survey v2 (correct MobileGestalt dylib) ===",
         @"Only dlopen/dlsym. NO private method called. NO permissions requested.",
         @"Symbol presence does not grant authorization or prove a working write route.",
         [NSString stringWithFormat:@"OS=%@",
          NSProcessInfo.processInfo.operatingSystemVersionString],
         nil];
 
-    [out addObject:BQProbeLib(@"MobileGestalt private framework",
-        @"/System/Library/PrivateFrameworks/MobileGestalt.framework/MobileGestalt",
+    // watchOS 26.6.1 ships libMobileGestalt.dylib in the dyld cache.
+    // A nonexistent MobileGestalt.framework path was a false-negative in v1.
+    [out addObject:BQProbeLib(@"MobileGestalt dylib (watchOS dyld cache)",
+        @"/usr/lib/libMobileGestalt.dylib",
         @[@"MGCopyAnswer", @"MGCopyMultipleAnswers", @"MGGetBoolAnswer", @"MGSetAnswer"])];
     [out addObject:BQProbeLib(@"Container Manager",
         @"/usr/lib/system/libsystem_containermanager.dylib",
@@ -57,7 +59,7 @@ NSString *BQRunReadOnlyAPISurvey(void) {
         @"/usr/lib/system/libxpc.dylib",
         @[@"xpc_connection_create_mach_service", @"xpc_connection_send_message_with_reply_sync"])];
     [out addObject:@"\nInterpretation of distinct mechanisms:"];
-    [out addObject:@"1. Library API: visibility is not evidence of a supported or authorized setter."];
+    [out addObject:@"1. Library API: symbol availability is not evidence of a supported or authorized setter. Failure to dlopen also does not prove absence from on-disk firmware."];
     [out addObject:@"2. MCM: returning a SystemGroup token does not imply file-write-data permission."];
     [out addObject:@"3. Signing: SecTask shows effective claims; private keys missing are not grantable by plist editing."];
     [out addObject:@"4. XPC: client API availability is not evidence of any permitted server operation; no service contacted."];
