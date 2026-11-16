@@ -1,0 +1,71 @@
+name: Build unsigned iPhone + Watch IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show selected Xcode and SDKs
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Build iPhone host and embedded Watch app (unsigned)
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project HermesEnabler2.xcodeproj \
+            -scheme HermesCompanion \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/.ci-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build > build.log 2>&1 || {
+              tail -n 200 build.log
+              exit 1
+            }
+          tail -n 30 build.log
+      - name: Package unsigned IPA (not directly installable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$PWD/.ci-build/Build/Products/Release-iphoneos/HermesCompanion.app"
+          WATCH="$HOST/Watch/HermesEnabler2.app"
+          test -d "$HOST" || { echo "::error::iOS companion app missing"; exit 1; }
+          test -d "$WATCH" || { echo "::error::Embedded Watch app missing; refusing a misleading IPA"; exit 1; }
+          mkdir -p dist/Payload
+          cp -R "$HOST" dist/Payload/
+          SAFE_REF="$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          OUT="HermesEnabler-unsigned-${SAFE_REF}.ipa"
+          (cd dist && zip -qry "$OUT" Payload)
+          unzip -l "dist/$OUT" | grep -E 'Payload/HermesCompanion.app/Watch/HermesEnabler2.app/' | head
+          echo "IPA=dist/$OUT" >> "$GITHUB_ENV"
+          {
+            echo "## Unsigned IPA created"
+            echo "Includes iPhone companion + embedded Apple Watch app."
+            echo "**Important:** This IPA has no valid Apple development signature or provisioning profile. It is NOT directly installable. Re-sign with an authorized Apple ID, for example using Xcode or a compatible signer."
+            echo "Apple private entitlements cannot be granted by re-signing with an ordinary Personal Team. Signers may reject or remove them."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-iphone-watch-ipa
+          path: dist/*.ipa
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
