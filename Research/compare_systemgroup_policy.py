@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare *decompiled text* Apple sandbox profiles (read-only).
+"""Compare *decompiled text* watchOS sandbox policy issuer and receiver gates (read-only).
 
 Inputs are pre-extracted policy text; the tool does not download/decrypt firmware,
 modify devices, request entitlements, or attempt sandbox bypasses.
@@ -15,7 +15,14 @@ from pathlib import Path
 import re
 import sys
 
-RULE_RE = re.compile(r"\(\s*(allow|deny)\s+(file-(?:read|write)-[a-z0-9-]+)", re.I)
+# The previous comparator skipped file-issue-extension entirely: the main
+# iOS 26->27 policy change was therefore invisible even with both profiles.
+# Also cover file-write* / file-read* shorthand.
+RULE_RE = re.compile(
+    r"\\(\\s*(allow|deny)\\s+"
+    r"(file-issue-extension|file-(?:read|write)(?:-[a-z0-9-]+|\\*)?)"
+    r"(?=[\\s\\)])", re.I,
+)
 KEYS = (
     "system-group", "systemgroup", "system-groups", "system-group-containers",
     "mobilegestaltcache", "Shared/SystemGroup", "com.apple.app-sandbox.read-write",
@@ -96,10 +103,34 @@ def main() -> int:
     except (OSError, UnicodeError, ValueError) as exc:
         ap.error(str(exc))
     old, new = rules(old_source, args.all_file_rules), rules(new_source, args.all_file_rules)
+    print("UNVERIFIED INPUT: this utility does not independently authenticate "
+          "the extracted watchOS build, device model or decompiled policy.")
     print(f"26 input: {args.profile_26} SHA256={digest(args.profile_26)}")
     print(f"27 input: {args.profile_27} SHA256={digest(args.profile_27)}")
     print(f"Rule filter: {'all file read/write rules' if args.all_file_rules else 'SystemGroup-related read/write rules'}")
     print(f"Matching rules: 26={len(old)}, 27={len(new)}")
+    def phase(rule: str) -> str:
+        lowered = rule.lower()
+        if re.search(r"^\\(\\s*(?:allow|deny)\\s+file-issue-extension", lowered):
+            return "ISSUER"
+        if re.search(r"^\\(\\s*(?:allow|deny)\\s+file-write", lowered):
+            return "RECEIVER_WRITE"
+        return "RECEIVER_READ"
+
+    print("Authorization phases (a token is not evidence of write permission):")
+    for kind in ("ISSUER", "RECEIVER_WRITE", "RECEIVER_READ"):
+        left = sorted(x for x in old if phase(x) == kind)
+        right = sorted(x for x in new if phase(x) == kind)
+        added = sorted(set(right) - set(left))
+        removed = sorted(set(left) - set(right))
+        print(f"  {kind}: 26={len(left)} 27={len(right)} "
+              f"new={len(added)} removed={len(removed)}")
+    if not any(phase(rule) == "ISSUER" for rule in old + new):
+        print("WARNING: no relevant extension-issuer rules found. "
+              "This is NOT evidence that issuance is permitted or identical.")
+    if not any(phase(rule) == "RECEIVER_WRITE" for rule in old + new):
+        print("WARNING: no relevant protected write policy rules found. "
+              "Inspect inherited/include policies; absence does not mean ALLOW.")
     if not old and not new:
         print("NO RELEVANT RULES FOUND: input may be incomplete, rules may use indirect predicates,")
         print("or text may not be a suitable decompiled profile. This does NOT prove permission.")
