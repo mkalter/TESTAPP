@@ -18,4 +18,7 @@ FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
 /// Extended, non-destructive authorization matrix across protected/cache and own paths.
 /// Does not request extensions or write protected data.
 FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
+/// New opt-in test: file-coordinated O_RDWR and same-byte pwrite proof.
+/// Requires verified cache backup; logs and forwards result to iPhone.
+FOUNDATION_EXPORT NSString *BQRunFileCoordinatorWriteProof(void);
 NS_ASSUME_NONNULL_END
