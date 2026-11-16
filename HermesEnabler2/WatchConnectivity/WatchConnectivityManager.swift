@@ -92,6 +92,73 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         return String(cString: buffer)
     }
 
+    // MARK: - Diagnostics relay to the iPhone
+
+    // Diagnostics use WatchConnectivity.transferFile, which queues delivery
+    // even when the phone is temporarily unreachable. The original file is
+    // retained in the Watch's Documents folder for later retransmission.
+    @discardableResult
+    func sendDiagnosticReport(name: String, text: String) -> Bool {
+        let permittedNames: Set<String> = [
+            "mg-write-gates.txt",
+            "kamui26-token-probe.txt",
+            "kamui26-write-open.txt",
+            "class7-flag-matrix.txt",
+            "mg-permission-diagnostics.txt",
+            "complete-diagnostics.txt",
+            "bqtool-tail.txt"
+        ]
+        guard permittedNames.contains(name) else {
+            print("[WC] Rejected unexpected diagnostic name")
+            return false
+        }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let destination = documents.appendingPathComponent(name)
+        do {
+            try text.write(to: destination, atomically: true, encoding: .utf8)
+        } catch {
+            print("[WC] Could not save diagnostic: \(error.localizedDescription)")
+            return false
+        }
+
+        let session = WCSession.default
+        guard session.activationState == .activated else {
+            print("[WC] Diagnostic saved; session not active yet: \(name)")
+            session.activate()
+            return false
+        }
+        let metadata: [String: Any] = [
+            "type": "diagnosticLog",
+            "fileName": name,
+            "transferDate": Date().timeIntervalSince1970,
+            "build": systemBuild() ?? "Unknown"
+        ]
+        let transfer = session.transferFile(destination, metadata: metadata)
+        print("[WC] Diagnostic queued for iPhone: \(name) (\(transfer.isTransferring))")
+        return true
+    }
+
+    func transferSavedDiagnosticReports() {
+        let names = [
+            "mg-write-gates.txt",
+            "kamui26-token-probe.txt",
+            "kamui26-write-open.txt",
+            "class7-flag-matrix.txt",
+            "mg-permission-diagnostics.txt",
+            "complete-diagnostics.txt",
+            "bqtool.log"
+        ]
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        for name in names {
+            let url = documents.appendingPathComponent(name)
+            guard let bytes = try? Data(contentsOf: url), !bytes.isEmpty else { continue }
+            // Include the latest 512 KB of long logs to keep transfer reliable.
+            let output = String(decoding: bytes.suffix(512 * 1024), as: UTF8.self)
+            let transferName = name == "bqtool.log" ? "bqtool-tail.txt" : name
+            _ = sendDiagnosticReport(name: transferName, text: output)
+        }
+    }
+
     // MARK: - WCSessionDelegate
 
     func session(
@@ -130,7 +197,17 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         _ session: WCSession,
         didReceiveMessage message: [String: Any]
     ) {
-        print("[WC] Message received: \(message)")
+        if message["type"] as? String == "requestDiagnosticLogs" {
+            transferSavedDiagnosticReports()
+        } else {
+            print("[WC] Message received: \(message)")
+        }
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        guard userInfo["type"] as? String == "requestDiagnosticLogs" else { return }
+        print("[WC] iPhone requested saved diagnostic reports")
+        transferSavedDiagnosticReports()
     }
     
     struct PendingBackup {
