@@ -21,6 +21,7 @@ on:
       - 'HermesEnabler2/BQPermissionDiagnostics.h'
       - 'HermesEnabler2/MGPermissionDiagnosticsView.swift'
       - 'HermesEnabler2/ContentView.swift'
+      - 'HermesEnabler2.xcodeproj/project.pbxproj'
 
 permissions:
   contents: read
