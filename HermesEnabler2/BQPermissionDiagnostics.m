@@ -6,6 +6,7 @@
 #import <sys/stat.h>
 #import <sys/sysctl.h>
 #import <unistd.h>
+#import <string.h>
 
 typedef int (*BQSandboxCheckFn)(pid_t, const char *, int, ...);
 // The value of SANDBOX_FILTER_PATH in Apple's sandbox.h.
