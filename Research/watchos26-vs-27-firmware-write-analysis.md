@@ -41,6 +41,38 @@ Source: [HermesEnabler issue #7, research comment on Watch6,14/23U95](https://gi
 
 **Inference:** the Class 13 token on 26 is insufficient for system-cache writing. This does not demonstrate that *all* possible write mechanisms are impossible; it establishes a concrete gate for the inspected route.
 
+## Newly verified iOS reference: blacktop/ipsw-diffs
+
+**Source:** [blacktop/ipsw-diffs — iOS 26.5 (23F77) vs 27.0 beta 1 (24A5355q), Sandbox.md](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/Sandbox.md), in its `##### containermanagerd` section (around lines 36051–36117).
+
+This is an actual textual diff of the **iOS sandbox policy**, not a watchOS extraction:
+
+| Operation/predicate | iOS 26.5 side | iOS 27.0 beta 1 side |
+|---|---|---|
+| `allow file-issue-extension` for `/private/var/containers/Shared/SystemGroup` | `extension-class "com.apple.sandbox.system-group"` | `require-any` of `com.apple.app-sandbox.read`, `com.apple.app-sandbox.read-write`, and `com.apple.sandbox.system-group` |
+| SystemData path | Its own separate class/predicate | Also generalized in the same diff to accept application read/read-write classes and a system-container class |
+| App Group path | Earlier `com.apple.sandbox.application-group`-oriented rule | Other application sandbox classes also appear in the restructured issuer rules |
+
+**Meaning:** on the inspected **iOS 27 beta**, the ContainerManager daemon's policy allows issuing a generic app-sandbox read-write extension for SystemGroup paths. The inspected iOS 26 policy's corresponding SystemGroup issuance rule lists only the system-group class. This gives a **specific possible explanation** for the broader iOS 27 `worse_query` SystemGroup support.
+
+**Crucial distinction:** `file-issue-extension` authorizes an issuer to produce a token; it does *not* establish that an arbitrary calling app can request it, or that the receiving app's full sandbox policy will accept it for `file-write-data`. A SystemGroup-class token on 26 may still require the app's private entitlement. Do not equate issuing a token with a successful writable file descriptor.
+
+Additional directly inspected references:
+
+- [blacktop iOS 26.5 → 26.6 Sandbox.md](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_26_6_23G5028e/Sandbox.md), lines ~2391–2412: MobileGestalt plist is explicitly present in a `file-read*` rule, consistent with direct read succeeding.
+- [blacktop iOS 27 beta sandbox `temporary-sandbox`](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/27_0_24A5380h_vs_27_0_24A5390f/SANDBOX/Collection/temporary-sandbox.md), lines ~70–90: the **system-group extension class continues** to appear with `com.apple.security.system-group-containers` / `com.apple.security.system-groups` predicates. Therefore there is **no evidence** that iOS 27 removed *all* system-group entitlement restrictions.
+- [blacktop iOS 27 beta `baseline` diff](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/27_0_24A5370h_vs_27_0_24A5380h/SANDBOX/Collection/baseline.md), lines ~7–93 and ~216–274: SystemGroup and read-write-extension predicates are still represented; the diff also contains considerable rule reordering, which must not be mistaken for permission changes.
+- [blacktop iOS 26.5 → 27.0 beta sandbox kernel version diff](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/KEXTS/com.apple.security.sandbox.md): kernel sandbox component version and section hashes changed. That metadata alone **does not determine effective permissions**.
+
+**Confidence grading:**
+
+1. **Verified from iOS text:** the 26 → 27 change in `containermanagerd`'s eligible extension classes for SystemGroup.
+2. **Consistent with watchOS 26 runtime observations:** the system-group token alone does not permit writes to MobileGestalt on 23U95.
+3. **Not verified:** that Watch6,18/23U95 and a watchOS 27 build have the same issuer policy text or accept the same extension classes as these iOS builds.
+4. **Not verified:** that the broader iOS 27 issuance condition is sufficient by itself for successful MobileGestalt modifications.
+
+The defensible next cross-check is matching **watchOS** `containermanagerd` issuer rules and the receiving app's `file-write-data` policy. iOS findings narrow the exact rule to compare, but do not provide an operational exploit for watchOS 26.
+
 ## 27 facts versus the 26/27 hypothesis
 
 What is independently source-visible:
