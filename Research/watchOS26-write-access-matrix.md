@@ -100,6 +100,24 @@ A claim of genuine 26.6.1 writing support requires a reproducible on-device resu
 4. Compare these against Issue #7 and #17. Include exact build, model, timestamps, and note any `sandbox_check` API unavailable results.
 5. If all three reports show independent sandbox denial of write, further repetition of identical flags is low value; focus static policy comparison and supported APIs instead.
 
+## Offline comparison tool
+After exporting `mg-write-gates.txt`, run:
+
+```bash
+python3 Research/analyze_write_gate_reports.py mg-write-gates.txt
+```
+
+If you have comparable data from a 27.x build, compare the two reports:
+
+```bash
+python3 Research/analyze_write_gate_reports.py watchos26.txt watchos27.txt
+```
+
+The script reports changed allow/deny policy outcomes, the protected non-mutating
+write-open result and whether a private SystemGroup entitlement was observed.
+It uses only local text files. If a sandbox symbol or entitlement API is
+unavailable, that is **unknown** rather than evidence of permission.
+
 ## Excluded due to risk/poor diagnostic value
 - Creating or modifying files inside the protected SystemGroup.
 - Rebuilding or deleting the live MobileGestalt cache.
