@@ -8,6 +8,7 @@
 #import <stdlib.h>
 #import <string.h>
 #import <sys/stat.h>
+#import <sys/sysctl.h>
 #import <unistd.h>
 
 // Non-destructive METHOD TEST, manually triggered by user.
@@ -27,6 +28,14 @@ typedef void (*BQWOXPCRelease)(void *);
 typedef int64_t (*BQWOConsume)(const char *);
 typedef int64_t (*BQWORelease)(int64_t);
 typedef int (*BQWOCheck)(pid_t, const char *, int, ...);
+
+static NSString *BQWOOSBuild(void) {
+    char version[128] = {0};
+    size_t size = sizeof(version);
+    if (sysctlbyname("kern.osversion", version, &size, NULL, 0) == 0)
+        return [NSString stringWithUTF8String:version] ?: @"unknown";
+    return @"unknown";
+}
 
 static NSString *BQWOOpenOnly(NSString *path) {
     errno = 0;
@@ -73,7 +82,7 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
 
     NSString *path = BQMobileGestaltPath();
     NSString *before = BQWOMetadata(path);
-    [out addObject:[NSString stringWithFormat:@"OS: %@", NSProcessInfo.processInfo.operatingSystemVersionString]];
+    [out addObject:[NSString stringWithFormat:@"OS: %@ / build: %@", NSProcessInfo.processInfo.operatingSystemVersionString, BQWOOSBuild()]];
     [out addObject:[NSString stringWithFormat:@"Target: %@", path]];
     [out addObject:[NSString stringWithFormat:@"Metadata before: %@", before]];
 
