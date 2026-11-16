@@ -3,7 +3,6 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
 #import <mach/mach.h>
-#import <mach/task_special_ports.h>
 #import <errno.h>
 #import <unistd.h>
 #import <string.h>
@@ -57,11 +56,14 @@ NSString *BQRunServiceAuthorizationDiagnostics(void) {
     BQServiceLookup lookup = (BQServiceLookup)dlsym(RTLD_DEFAULT, "bootstrap_look_up");
     if (!lookup && system) lookup = (BQServiceLookup)dlsym(system, "bootstrap_look_up");
     if (lookup) {
-        mach_port_t bootstrap = MACH_PORT_NULL;
-        kern_return_t k = task_get_bootstrap_port(mach_task_self(), &bootstrap);
-        [out addObject:[NSString stringWithFormat:@"task_get_bootstrap_port kr=%d port=%@",
-            (int)k, bootstrap == MACH_PORT_NULL ? @"NULL" : @"AVAILABLE"]];
-        if (k == KERN_SUCCESS && bootstrap != MACH_PORT_NULL) {
+        // A regular watchOS app cannot call task_get_special_port().
+        // Look up the libSystem process bootstrap port symbol without requesting a special port.
+        mach_port_t *bootstrapRef = (mach_port_t *)dlsym(RTLD_DEFAULT, "bootstrap_port");
+        mach_port_t bootstrap = bootstrapRef ? *bootstrapRef : MACH_PORT_NULL;
+        [out addObject:[NSString stringWithFormat:@"process bootstrap_port symbol=%@ port=%@",
+            bootstrapRef ? @"AVAILABLE" : @"UNAVAILABLE",
+            bootstrap != MACH_PORT_NULL ? @"AVAILABLE" : @"NULL"]];
+        if (bootstrap != MACH_PORT_NULL) {
             mach_port_t service = MACH_PORT_NULL;
             kern_return_t result = lookup(bootstrap, name.UTF8String, &service);
             [out addObject:[NSString stringWithFormat:
@@ -70,7 +72,8 @@ NSString *BQRunServiceAuthorizationDiagnostics(void) {
                 (result == KERN_SUCCESS && service != MACH_PORT_NULL) ? @"YES" : @"NO"]];
             if (result == KERN_SUCCESS && service != MACH_PORT_NULL)
                 mach_port_deallocate(mach_task_self(), service);
-            mach_port_deallocate(mach_task_self(), bootstrap);
+        } else {
+            [out addObject:@"No exported process bootstrap port; lookup not attempted."];
         }
     } else {
         [out addObject:@"bootstrap_look_up unavailable; service reachability UNKNOWN"];
