@@ -13,7 +13,8 @@ typedef BQSecTaskRef (*BQTaskCreate)(CFAllocatorRef);
 typedef CFTypeRef (*BQTaskValue)(BQSecTaskRef, CFStringRef, CFErrorRef *);
 
 static NSArray<NSString *> *BQKeys(void) {
-    return @[@"com.apple.security.system-groups",
+    return @[@"com.apple.private.security.storage.MobileGestaltCache",
+             @"com.apple.security.system-groups",
              @"com.apple.security.system-group-containers",
              @"com.apple.security.application-groups",
              @"application-identifier",
