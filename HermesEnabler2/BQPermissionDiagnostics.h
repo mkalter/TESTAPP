@@ -26,4 +26,6 @@ FOUNDATION_EXPORT NSString *BQRunRuntimeEntitlementDiagnostics(void);
 FOUNDATION_EXPORT NSString *BQRunDenialRootCauseDiagnostics(void);
 /// Survey API exports without calling write-related or cross-process operations.
 FOUNDATION_EXPORT NSString *BQRunReadOnlyAPISurvey(void);
+/// Observe current-process rights, sandbox Mach lookup and launchd name resolution only.
+FOUNDATION_EXPORT NSString *BQRunServiceAuthorizationDiagnostics(void);
 NS_ASSUME_NONNULL_END
