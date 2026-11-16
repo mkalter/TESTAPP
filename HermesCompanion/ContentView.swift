@@ -26,6 +26,31 @@ struct ContentView: View {
                     WatchInstallationCard(watchManager: watchManager)
                     LatestBackupCard(watchManager: watchManager)
 
+                    NavigationLink {
+                        DiagnosticLogsView(manager: watchManager)
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "waveform.path.ecg.rectangle")
+                                .font(.title2)
+                                .foregroundStyle(.tint)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Watch Logs")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("\(watchManager.diagnosticLogs.count) logbestanden · Bekijken, kopiëren en delen")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(16)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+
                     actionButtons
                 }
                 .padding()
@@ -68,6 +93,7 @@ struct ContentView: View {
             if newPhase == .active {
                 watchManager.refreshConnectionStatus()
                 watchManager.loadBackupHistory()
+                watchManager.refreshDiagnosticLogs()
             }
         }
     }
