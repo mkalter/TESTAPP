@@ -24,6 +24,9 @@ jobs:
         run: |
           sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' HermesEnabler2.xcodeproj/project.pbxproj
 
+      - name: Check offline watchOS policy-diff parser
+        run: python3 Research/test_compare_systemgroup_policy.py
+
       - name: Build unsigned iPhone app with embedded Apple Watch app
         run: |
           bash scripts/create_ipa.sh \
