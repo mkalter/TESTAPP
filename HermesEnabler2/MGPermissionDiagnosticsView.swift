@@ -27,12 +27,14 @@ struct MGPermissionDiagnosticsView: View {
                     Task.detached(priority: .utility) {
                         // Run only once, in a fixed order. No protected writes.
                         let entitlements = BQRunRuntimeEntitlementDiagnostics() as String
+                        let rootCause = BQRunDenialRootCauseDiagnostics() as String
+                        let apiSurvey = BQRunReadOnlyAPISurvey() as String
                         let gates = BQRunWriteGateDiagnostics() as String
                         let baseline = BQRunPermissionDiagnostics() as String
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let extended = BQRunExtendedAuthorizationMatrix() as String
-                        let combined = [entitlements, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
+                        let combined = [entitlements, rootCause, apiSurvey, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
@@ -54,6 +56,44 @@ struct MGPermissionDiagnosticsView: View {
                         )
                         await MainActor.run {
                             report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button(running ? "Testing…" : "Root-cause: why EPERM? (new)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let result = BQRunDenialRootCauseDiagnostics() as String
+                        let queued = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-denial-root-cause.txt", text: result
+                        )
+                        await MainActor.run {
+                            report = result
+                            transferStatus = queued
+                                ? "Root-cause-rapport in wachtrij voor iPhone → Watch Logs."
+                                : "Overdracht nog niet gereed. Gebruik 'Send logs to iPhone'."
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button(running ? "Testing…" : "Survey alternative APIs (new)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let result = BQRunReadOnlyAPISurvey() as String
+                        let queued = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-api-survey.txt", text: result
+                        )
+                        await MainActor.run {
+                            report = result
+                            transferStatus = queued
+                                ? "API-survey in wachtrij voor iPhone → Watch Logs."
+                                : "Overdracht nog niet gereed. Gebruik 'Send logs to iPhone'."
                             running = false
                         }
                     }
