@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Manually triggered, non-destructive tests; no BQEscape calls or system writes.
+/// Non-destructive diagnostic tests; the manual legacy write-open probe is separate.
 struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
@@ -23,7 +23,8 @@ struct MGPermissionDiagnosticsView: View {
                         let baseline = BQRunPermissionDiagnostics() as String
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
-                        let combined = [gates, baseline, class7, kamui].joined(separator: "\n\n")
+                        let extended = BQRunExtendedAuthorizationMatrix() as String
+                        let combined = [gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
@@ -45,6 +46,22 @@ struct MGPermissionDiagnosticsView: View {
                         )
                         await MainActor.run {
                             report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button("Run extended authorization matrix (60+ checks)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunExtendedAuthorizationMatrix() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "extended-authorization-matrix.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
                             running = false
                         }
                     }
