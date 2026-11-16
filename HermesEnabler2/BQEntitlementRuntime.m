@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <mach-o/loader.h>
+#import <mach-o/fat.h>
+#import <mach/machine.h>
 #import <libkern/OSByteOrder.h>
 
 // Read-only inspection of our own signed Watch executable and process.
@@ -34,6 +36,90 @@ static BOOL BQBE32(NSData *data, NSUInteger index, uint32_t *value) {
 
 // Parses LC_CODE_SIGNATURE -> SuperBlob -> XML entitlement blob, when present.
 // XML is only a signed claim; never interpreted as a grant of write permission.
+static BOOL BQBE64(NSData *data, NSUInteger index, uint64_t *value) {
+    if (index > data.length || data.length - index < 8) return NO;
+    uint64_t raw = 0;
+    memcpy(&raw, (const uint8_t *)data.bytes + index, 8);
+    *value = OSSwapBigToHostInt64(raw);
+    return YES;
+}
+
+static BOOL BQFindMachOSlice(NSData *data, NSUInteger *sliceStart,
+                              NSUInteger *sliceLength, NSMutableString *output) {
+    uint32_t magic = 0;
+    if (!BQU32(data, 0, &magic)) return NO;
+    *sliceStart = 0;
+    *sliceLength = data.length;
+    // On a little-endian watch, on-disk CAFEBABE appears as FAT_CIGAM.
+    BOOL bigEndianFAT = (magic == FAT_CIGAM || magic == FAT_CIGAM_64);
+    BOOL littleEndianFAT = (magic == FAT_MAGIC || magic == FAT_MAGIC_64);
+    if (!bigEndianFAT && !littleEndianFAT) return YES;
+    BOOL fat64 = (magic == FAT_CIGAM_64 || magic == FAT_MAGIC_64);
+    uint32_t count = 0;
+    if (bigEndianFAT ? !BQBE32(data, 4, &count) : !BQU32(data, 4, &count)) return NO;
+    NSUInteger stride = fat64 ? 32 : 20;
+    if (count == 0 || count > 64 || data.length < 8 ||
+        count > (data.length - 8) / stride) return NO;
+
+    BOOL found = NO;
+    int bestScore = -1;
+    NSUInteger bestIndex = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        NSUInteger header = 8 + (NSUInteger)i * stride;
+        uint32_t cpu = 0, offset32 = 0, size32 = 0;
+        uint64_t offset64 = 0, size64 = 0;
+        BOOL valid = bigEndianFAT ? BQBE32(data, header, &cpu) : BQU32(data, header, &cpu);
+        if (fat64) {
+            if (bigEndianFAT) {
+                valid = valid && BQBE64(data, header + 8, &offset64) &&
+                                  BQBE64(data, header + 16, &size64);
+            } else {
+                uint64_t raw = 0;
+                if (header + 24 > data.length) return NO;
+                memcpy(&raw, (const uint8_t *)data.bytes + header + 8, 8);
+                offset64 = raw;
+                memcpy(&raw, (const uint8_t *)data.bytes + header + 16, 8);
+                size64 = raw;
+            }
+        } else {
+            valid = valid && (bigEndianFAT ? BQBE32(data, header + 8, &offset32) :
+                                            BQU32(data, header + 8, &offset32));
+            valid = valid && (bigEndianFAT ? BQBE32(data, header + 12, &size32) :
+                                            BQU32(data, header + 12, &size32));
+            offset64 = offset32;
+            size64 = size32;
+        }
+        if (!valid || offset64 > data.length || size64 > data.length - offset64 ||
+            size64 < sizeof(struct mach_header)) continue;
+        uint32_t thinMagic = 0;
+        if (!BQU32(data, (NSUInteger)offset64, &thinMagic) ||
+            (thinMagic != MH_MAGIC && thinMagic != MH_MAGIC_64)) continue;
+
+        int score = 0;
+#ifdef CPU_TYPE_ARM64_32
+        if (cpu == CPU_TYPE_ARM64_32) score = 3;
+#endif
+        if (cpu == CPU_TYPE_ARM64) score = 2;
+        if (!found || score > bestScore) {
+            found = YES;
+            bestScore = score;
+            bestIndex = i;
+            *sliceStart = (NSUInteger)offset64;
+            *sliceLength = (NSUInteger)size64;
+        }
+    }
+    if (!found) {
+        [output appendFormat:@"FAT Mach-O (%u slices): no compatible thin slice found\n", count];
+        return NO;
+    }
+    [output appendFormat:@"FAT Mach-O (%u slices): selected slice %lu, offset=%lu, length=%lu\n",
+        count, (unsigned long)bestIndex, (unsigned long)*sliceStart,
+        (unsigned long)*sliceLength];
+    return YES;
+}
+
+// Parses the calling app's own LC_CODE_SIGNATURE; not protected system files.
+// A signed XML blob may be absent (DER-only); SecTask is the definitive runtime query.
 static NSDictionary *BQOwnSignatureXML(NSMutableString *output) {
     NSString *path = NSBundle.mainBundle.executablePath;
     NSData *data = path ? [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:NULL] : nil;
@@ -41,16 +127,20 @@ static NSDictionary *BQOwnSignatureXML(NSMutableString *output) {
         [output appendString:@"Own executable unavailable; signature UNKNOWN\n"];
         return nil;
     }
+    NSUInteger slice = 0, sliceLength = 0;
+    if (!BQFindMachOSlice(data, &slice, &sliceLength, output)) return nil;
     uint32_t magic = 0, commands = 0, commandBytes = 0;
-    if (!BQU32(data, 0, &magic)) return nil;
-    BOOL is64 = (magic == MH_MAGIC_64);
+    if (!BQU32(data, slice, &magic)) return nil;
+    BOOL is64 = magic == MH_MAGIC_64;
     if (!is64 && magic != MH_MAGIC) {
-        [output appendFormat:@"Unsupported Mach-O magic 0x%08x; signature UNKNOWN\n", magic];
+        [output appendFormat:@"Unsupported thin Mach-O magic 0x%08x\n", magic];
         return nil;
     }
-    if (!BQU32(data, 16, &commands) || !BQU32(data, 20, &commandBytes)) return nil;
-    NSUInteger offset = is64 ? sizeof(struct mach_header_64) : sizeof(struct mach_header);
-    if (offset > data.length || commandBytes > data.length - offset || commands > 2048) return nil;
+    if (sliceLength < (is64 ? sizeof(struct mach_header_64) : sizeof(struct mach_header)) ||
+        !BQU32(data, slice + 16, &commands) ||
+        !BQU32(data, slice + 20, &commandBytes)) return nil;
+    NSUInteger offset = slice + (is64 ? sizeof(struct mach_header_64) : sizeof(struct mach_header));
+    if (commandBytes > sliceLength - (offset - slice) || commands > 2048) return nil;
     NSUInteger end = offset + commandBytes, signature = 0, signatureLength = 0;
     for (uint32_t i = 0; i < commands; ++i) {
         uint32_t command = 0, size = 0;
@@ -60,14 +150,15 @@ static NSDictionary *BQOwnSignatureXML(NSMutableString *output) {
         if (command == LC_CODE_SIGNATURE && size >= 16) {
             uint32_t pos = 0, len = 0;
             if (!BQU32(data, offset + 8, &pos) || !BQU32(data, offset + 12, &len)) return nil;
-            signature = pos;
+            if (pos > sliceLength || len > sliceLength - pos) return nil;
+            signature = slice + pos;
             signatureLength = len;
             break;
         }
         offset += size;
     }
-    if (!signatureLength || signature > data.length || signatureLength > data.length - signature) {
-        [output appendString:@"No LC_CODE_SIGNATURE (possibly unsigned build)\n"];
+    if (!signatureLength) {
+        [output appendString:@"No LC_CODE_SIGNATURE in this slice (possibly unsigned)\n"];
         return nil;
     }
     uint32_t superMagic = 0, blobLength = 0, count = 0;
@@ -102,7 +193,6 @@ static NSDictionary *BQOwnSignatureXML(NSMutableString *output) {
     [output appendFormat:@"No XML entitlement blob; DER entitlement blob=%@\n", derFound ? @"YES" : @"NO"];
     return nil;
 }
-
 static NSString *BQValue(id value) {
     if (!value) return @"ABSENT";
     return [NSString stringWithFormat:@"PRESENT %@", value];
@@ -110,7 +200,7 @@ static NSString *BQValue(id value) {
 
 NSString *BQRunRuntimeEntitlementDiagnostics(void) {
     NSMutableString *report = [NSMutableString stringWithFormat:
-        @"=== watchOS entitlement audit v1 ===\nOS: %@\nBundle: %@\n"
+        @"=== watchOS entitlement audit v2 (FAT-aware) ===\nOS: %@\nBundle: %@\n"
         @"Read-only: self executable and self task only.\n\n",
         NSProcessInfo.processInfo.operatingSystemVersionString,
         NSBundle.mainBundle.bundleIdentifier ?: @"unknown"];
