@@ -71,6 +71,19 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
+                Button("Test Class 13 write-open (no writes)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunKAMUI26WriteOpenTest()
+                        await MainActor.run {
+                            report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 Button("Run write-authorization matrix") {
                     guard !running else { return }
                     running = true
