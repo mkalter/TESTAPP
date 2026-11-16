@@ -148,3 +148,40 @@ condition on the target hardware**.
 5. A working 26.6.1 write method has **not** been found; no sandbox escape or protected-write payload is supplied here.
 
 This document deliberately distinguishes **published evidence**, **source code**, **inference**, and **unperformed binary comparisons**.
+
+
+## 2026-11-16 follow-up: real Watch6,18 / 23U95 results and diff tooling
+
+### Completed physical-device validation (user-supplied TESTAPP logs)
+
+The same real Watch running **26.6.1 / 23U95** returned:
+
+| Strategy | Token | Effective protected write-open |
+| --- | --- | --- |
+| Class 13 direct `0x8100000000` | No | Not authorized |
+| Class 13 alternate `0x800000000` | Yes; consumed successfully | `EPERM`; `file-write-data=DENY` |
+| WorstGestalt file-scoped, `/var`, `0x8000000000` | No | Not reached |
+| WorstGestalt file-scoped, `/private/var`, `0x8000000000` | No | Not reached |
+
+These two numeric flags are **different**: `0x800000000` and `0x8000000000`.
+The file's inode, size and mtime remained identical across the run. The test did **not** modify MobileGestalt.
+
+### What we can and cannot compare today
+
+- The public [iOS 26.5 → 27.0 beta SystemGroup issuer-policy diff](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/Sandbox.md) shows an expansion of eligible extension classes in the `containermanagerd` `file-issue-extension` rule, but this is **iOS**, not watchOS.
+- The corresponding [iOS ContainerManager dylib diff](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/DYLIBS/usr/lib/system/libsystem_containermanager.dylib.md) reports versions **725.120.2.0.0 → 826.0.0.0.1**. A version difference is not by itself an entitlement or vulnerability explanation.
+- A proper **same-model** comparison is **Watch7,5 23U67 → Watch7,5 24R364** (Ultra 2). A separate Watch6,18 23U95 comparison is still necessary because the user's Ultra 1 does not run watchOS 27.
+- Neither pair of matching extracted Watch sandbox policy texts / daemon binaries was available to independently inspect in this repository during this investigation. **No literal watchOS 26 → 27 binary/policy diff has been performed.** Missing source data cannot be replaced by synthetic examples or an iOS policy.
+- The existing `Research/OTA/README.md` catalogs physical 27.x OTAs and hashes for selected extracted **MobileGestalt libraries**, not complete comparable 26/27 SystemGroup sandbox-policy dumps.
+
+### Actual implementation changes
+
+1. `Research/compare_systemgroup_policy.py` now includes **`file-issue-extension`** and `file-write*`/`file-read*` operations, which its older regex silently omitted.
+2. It reports **ISSUER**, **RECEIVER_WRITE**, and **RECEIVER_READ** changes separately, with SHA-256 for the supplied policy texts.
+3. It explicitly reports missing authorization gates as **unknown**, rather than mistaking absent rules for `ALLOW`.
+4. `Research/test_compare_systemgroup_policy.py` provides synthetic regression fixtures. They are *tests of the parser*, never masqueraded as actual Apple policy.
+5. The Watch `Class 13 direct + file` test now attempts to **classify** a copied token using known public extension-class markers; it never logs or exports the raw security token. A sealed or unknown token is explicitly labeled `UNKNOWN`. The existing post-consume `file-write-data` and nonmutating `open(O_WRONLY)` checks remain the effective authorization verdict.
+
+### Scientific decision
+
+If a real watchOS 26/27 policy diff matches the iOS issuer-class change, that explains **which tokens might be issued** but does not establish **which token a developer-signed watch app may use to write MobileGestalt**. These remain two independent predicates. Until the original policy blobs have been verified and the authorization gates compared, there is no source-grounded evidence of a new protected cache writer on 23U95.
