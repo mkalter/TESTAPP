@@ -6,6 +6,7 @@
 #import <errno.h>
 #import <fcntl.h>
 #import <sys/mount.h>
+#import <sys/sysctl.h>
 #import <sys/stat.h>
 #import <sys/types.h>
 #import <unistd.h>
@@ -17,6 +18,14 @@ typedef int (*BQGateSandboxCheck)(pid_t, const char *, int, ...);
 typedef CFTypeRef (*BQGateTaskCreate)(CFAllocatorRef);
 typedef CFTypeRef (*BQGateReadEntitlement)(CFTypeRef, CFStringRef, CFErrorRef *);
 static const int BQGateFilterPath = 1; // SANDBOX_FILTER_PATH
+
+static NSString *BQGateOSBuild(void) {
+    char version[128] = {0};
+    size_t size = sizeof(version);
+    if (sysctlbyname("kern.osversion", version, &size, NULL, 0) == 0)
+        return [NSString stringWithUTF8String:version] ?: @"unknown";
+    return @"unavailable";
+}
 
 static NSString *BQGateErrno(int error) {
     return [NSString stringWithFormat:@"%d (%s)", error, strerror(error)];
@@ -112,8 +121,8 @@ NSString *BQRunWriteGateDiagnostics(void) {
         @"NO protected writes / NO sandbox escapes / NO symlink redirection",
         nil];
     [lines addObject:[NSString stringWithFormat:@"Time: %@", [NSDate date]]];
-    [lines addObject:[NSString stringWithFormat:@"OS: %@",
-                      [NSProcessInfo processInfo].operatingSystemVersionString]];
+    [lines addObject:[NSString stringWithFormat:@"OS: %@ | build: %@",
+                      [NSProcessInfo processInfo].operatingSystemVersionString, BQGateOSBuild()]];
     [lines addObject:[NSString stringWithFormat:@"bundle=%@", 
                       [NSBundle mainBundle].bundleIdentifier ?: @"unknown"]];
     [lines addObject:[NSString stringWithFormat:@"pid=%d real_uid=%lu effective_uid=%lu real_gid=%lu effective_gid=%lu",
