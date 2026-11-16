@@ -21,4 +21,9 @@ FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
 /// Read signed claims from this Watch executable and inspect process entitlements when supported.
 /// Never requests privileges or accesses MobileGestalt files.
 FOUNDATION_EXPORT NSString *BQRunRuntimeEntitlementDiagnostics(void);
+/// Distinguish independent sandbox, Unix DAC, filesystem and path identity gates.
+/// Read-only: no protected write-open, extension token or protected write.
+FOUNDATION_EXPORT NSString *BQRunDenialRootCauseDiagnostics(void);
+/// Survey API exports without calling write-related or cross-process operations.
+FOUNDATION_EXPORT NSString *BQRunReadOnlyAPISurvey(void);
 NS_ASSUME_NONNULL_END
