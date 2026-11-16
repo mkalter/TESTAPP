@@ -6,4 +6,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// control file in the app's own App Group and a report in Documents.
 /// Never creates or modifies a protected MobileGestalt file.
 FOUNDATION_EXPORT NSString *BQRunPermissionDiagnostics(void);
+/// Compare Class 7 flags for the app's own App Group only (no protected target).
+FOUNDATION_EXPORT NSString *BQRunClass7ControlMatrix(void);
 NS_ASSUME_NONNULL_END
