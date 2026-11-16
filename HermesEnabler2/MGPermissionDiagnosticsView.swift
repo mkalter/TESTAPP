@@ -22,7 +22,8 @@ struct MGPermissionDiagnosticsView: View {
                         let gates = BQRunWriteGateDiagnostics() as String
                         let baseline = BQRunPermissionDiagnostics() as String
                         let class7 = BQRunClass7ControlMatrix() as String
-                        let combined = [gates, baseline, class7].joined(separator: "\n\n")
+                        let kamui = BQRunKAMUI26TokenProbe() as String
+                        let combined = [gates, baseline, class7, kamui].joined(separator: "\n\n")
                         await MainActor.run {
                             report = combined
                             running = false
