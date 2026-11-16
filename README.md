@@ -59,3 +59,7 @@ Windows uses [WatchBridge](https://github.com/AdminZachary/iloader-for-windows),
 This project incorporates code from [Gester](https://github.com/sasobhabha/Gester).
 
 Use at your own risk.
+
+## watchOS 26 entitlement diagnostics
+
+For read-only iPhone/Watch IPA signature and provisioning checks, and a separate opt-in private-entitlement request experiment, see [Entitlement experiment](docs/entitlement-experiment.md). Run the source-only check from [GitHub Actions](../../actions/workflows/entitlement-audit.yml). These tests do not grant protected SystemGroup write access.
