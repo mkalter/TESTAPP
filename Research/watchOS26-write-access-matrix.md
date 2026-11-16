@@ -118,6 +118,42 @@ write-open result and whether a private SystemGroup entitlement was observed.
 It uses only local text files. If a sandbox symbol or entitlement API is
 unavailable, that is **unknown** rather than evidence of permission.
 
+## KAMUI 2.5.2 direct source review (2026-11-16)
+
+Primary sources:
+- [KAMUI 2.5.2](https://github.com/murk-sus/kamui-escape/releases/tag/v2.5.2): iOS 26 support is described as **requiring on-device verification** for each release/signing method. The confirmed write demonstration is iOS 27.2.
+- [KAMUI source](https://github.com/murk-sus/kamui-escape/blob/main/src/BQCore.m): in `bq_escape_symlink`, the alternative iOS 26 flag is conditioned on `os.majorVersion == 26` AND a `target` containing `/var/mobile/Containers/Shared/AppGroup`. The actual MobileGestalt target lives in `/var/containers/Shared/SystemGroup`, so this condition is **false** when targeting MobileGestalt. KAMUI therefore chooses the older default flag for this particular target.
+- [KAMUI README](https://github.com/murk-sus/kamui-escape/blob/main/README.md): claims broad 26/27 compatibility, but only provides confirmed MG-write evidence on 27.2.
+- [HermesEnabler #7](https://github.com/pookjw/HermesEnabler/issues/7): a different Class 13 flag yielded a system-group token on 23U95, but **no protected-write authorization**.
+
+**Conclusion:** upstream's iOS 26 support claim does not prove that a stock watch running 23U95 can write the SystemGroup cache. Porting KAMUI's unchanged Class 7 branch would repeat a method already present in TESTAPP.
+
+### KAMUI-specific on-device token observation
+
+The Watch app now offers **MG Diagnostics → Run KAMUI 26 token probe**.
+The test makes two *direct, no-traversal* class-13 queries for the known
+MobileGestalt SystemGroup ID, using (1) KAMUI's existing direct Class 13
+flag and (2) the alternate flag reported by the 23U95 physical test.
+
+It observes only whether MCM returns a container result, whether a path is
+returned, and whether a token can be copied. A token, if received, is freed
+immediately without being consumed; the test never requests privileged write
+access or changes the protected filesystem.
+
+Results: `Documents/kamui26-token-probe.txt`, Xcode log `[KAMUI26Probe]`.
+This test is **not** evidence that writing works or that a sandbox escape
+succeeded.
+
+Interpretation:
+- No token in either case: reproduces the token issuance restriction.
+- Token for the alternate Class 13 case: agrees with issue #7 but does **not**
+  establish file-write-data or write-open rights. Compare against
+  `mg-write-gates.txt` from the same run.
+- Token for KAMUI's original case: new on-device observation, not automatic
+  permission to write.
+- The system-group write gate remains the decisive condition. Do not attempt
+  cache writes or rebuild the cache based on token presence.
+
 ## Excluded due to risk/poor diagnostic value
 - Creating or modifying files inside the protected SystemGroup.
 - Rebuilding or deleting the live MobileGestalt cache.
