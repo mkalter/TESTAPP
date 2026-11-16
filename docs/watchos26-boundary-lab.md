@@ -59,3 +59,47 @@ A confirmed write route would require independently verified authorization and s
 - [23U95 MobileGestaltHelper firmware analysis](https://github.com/ZhuoXuan-MY/HermesEnabler--WatchOS26.X/blob/main/research/RO23-V08-Firmware-Analysis.md)
 - [23U95 libMobileGestalt question/server authorization](https://github.com/ZhuoXuan-MY/HermesEnabler--WatchOS26.X/blob/main/research/RO23-V09-MobileGestalt-Analysis.md)
 - [iOS 27 Platform sandbox policy diff (not exact watchOS policy)](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/27_2_24B115_vs_27_3_24C5037i/SANDBOX/Platform/platform.md)
+
+
+## Device results: 2026-11-16, watchOS 26.6.1 / 23U95
+
+The first on-watch execution of \`mg-boundary-lab.txt\` gave the following.
+
+| Measurement | Protected MG cache | Own Documents control | Own App Group control |
+|---|---|---|---|
+| Owner/Unix mode | 501:501 / 0644 | 501:501 / 0644 | 501:501 / 0644 |
+| ACL | 0 entries | acl_get_fd: ENOENT (none) | acl_get_fd: ENOENT (none) |
+| Data Protection class (F_GETPROTECTIONCLASS) | 4 (= Class D, No Protection) | 3 (= Class C, protected until first authentication) | 3 (= Class C) |
+| xattr names | com.apple.dataprotection.policy.exception-applied-by | none | none |
+| APFS mount | writable | writable | writable |
+| Before/after inode, size, mtime | unchanged | unchanged during inspection | unchanged during inspection |
+| Sandbox policy file-write-data | DENY(1) | ALLOW after creation | ALLOW after creation |
+| Actual O_WRONLY | EPERM in previous on-watch probe | ALLOW | ALLOW |
+| Actual create/write/read/delete | not attempted | PASS | PASS |
+
+Protected MG SHA256 at the time of observation: \`790bb8502e549411bca755fea769fc2af96f963565c867133564571402db5313\`; size 13,325 B; inode 467170. These values are **observational fingerprints**, not safe modification targets. They should not be treated as a backup or substituted for a recoverable original.
+
+### What this rules out
+
+- **Ordinary Unix DAC:** owner UID and mode alone allow writing. A POSIX ACL denial was not seen.
+- **Read-only volume or immutable file:** mount is writable, file flags 0.
+- **Wrong symlink / vnode:** \`lstat\`, \`fstat\`, and \`F_GETPATH\` refer to the same file.
+- **Data Protection locking:** the MG file is *less* restrictive cryptographically (Class D) than own controls (Class C). Its read succeeds, so Class D does not explain EPERM.
+
+The xattr name \`com.apple.dataprotection.policy.exception-applied-by\` appears in Apple's iOS system tools and a publicly analyzed app-backup encoder as a record identifying the party that applied a Data Protection exception. Its presence is **not** evidence of an authorization capability, an entitlement grant, or a bypass. This test did not read its value.
+
+### Preflight clarification
+
+The old apparent contradiction "sandbox DENY but own App Group actual-write PASS" is **not established for a single unchanged existing file**: in the new log, queries against the own control path **before it existed** returned DENY, but after creating the file every queried policy returned ALLOW and actual O_WRONLY was allowed. The earlier own App Group *root* preflight DENY is an independent observation that must not be conflated with these per-file controls.
+
+For the existing MG file, preflight \`file-write-data=DENY\` and actual open \`EPERM\` agree. The lab still cannot identify the precise sandbox profile clause or prove that a private cache-storage entitlement alone would change the result.
+
+### Next priority
+
+Do **not** repeat Class 7/13, bootstrap lookups, or chmod/xattr mutations. The next genuine evidence would be a **matching watchOS 23U95 platform sandbox profile or equivalent authoritative code** that establishes the storage-class authorization predicate, plus a *documented authorized* value-specific system interface. An iOS 27 platform diff referencing \`storage-class "MobileGestaltCache"\` is circumstantial, not exact-watchOS proof.
+
+Sources:
+- [Apple XNU content protection definitions (Class C = 3, Class D = 4)](https://github.com/ravynsoft/ravynos/blob/main/Kernel/xnu/bsd/sys/content_protection.h)
+- [Apple Platform Security: Data Protection classes](https://support.apple.com/guide/security/data-protection-classes-secb010e978a/web)
+- [iOS 26 decompilation: exception-applied-by as an xattr](https://github.com/EthanArbuckle/iPhone18-3_26.1_23B85_Restore/blob/main/usr/libexec/applekeystored/applekeystored_03.mm)
+- [MobileBackup integrity checker: ignoring exception-applied-by on metadata comparison](https://github.com/EthanArbuckle/iPhone18-3_26.1_23B85_Restore/blob/main/System/Library/PrivateFrameworks/MobileBackup.framework/MobileBackup/MBSnapshotIntegrityVerifier.mm)
