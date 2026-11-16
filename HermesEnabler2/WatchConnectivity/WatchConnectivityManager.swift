@@ -101,6 +101,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     func sendDiagnosticReport(name: String, text: String) -> Bool {
         let permittedNames: Set<String> = [
             "mg-write-gates.txt",
+            "extended-authorization-matrix.txt",
             "kamui26-token-probe.txt",
             "kamui26-write-open.txt",
             "class7-flag-matrix.txt",
@@ -141,6 +142,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     func transferSavedDiagnosticReports() {
         let names = [
             "mg-write-gates.txt",
+            "extended-authorization-matrix.txt",
             "kamui26-token-probe.txt",
             "kamui26-write-open.txt",
             "class7-flag-matrix.txt",
