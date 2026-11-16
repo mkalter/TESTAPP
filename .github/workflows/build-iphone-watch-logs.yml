@@ -1,0 +1,60 @@
+name: Build iPhone + Apple Watch IPA (Watch Logs)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode and SDK versions
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Adapt newer project format for hosted runner
+        run: |
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' HermesEnabler2.xcodeproj/project.pbxproj
+
+      - name: Build unsigned iPhone app with embedded Apple Watch app
+        run: |
+          bash scripts/create_ipa.sh \
+            --output build/ipa/HermesEnabler-WatchLogs-unsigned.ipa
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-WatchLogs-unsigned
+          path: build/ipa/HermesEnabler-WatchLogs-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish unsigned IPA direct download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$LATEST" != "$GITHUB_SHA" ]]; then
+            echo "A newer commit exists; don't publish stale IPA."
+            exit 0
+          fi
+          TAG="watch-logs-unsigned-20261116"
+          IPA="build/ipa/HermesEnabler-WatchLogs-unsigned.ipa"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPA" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "HermesEnabler — iPhone Watch Logs (unsigned)" \
+              --notes "Unsigned iPhone companion IPA with embedded Watch app and WatchConnectivity diagnostic log browser. Requires separate signing of iPhone + Watch app before installation." \
+              --prerelease
+          fi
