@@ -790,14 +790,24 @@ static NSString *bq_create_gestalt_backup(NSString *kind, NSString **err) {
         if (err) *err = NSLocalizedString(@"Create the initial backup first.", nil);
         return nil;
     }
-    NSString *link = nil;
-    int64_t h = BQEscape(kMGCaches, &link);
-    if (h < 0) {
-        if (err) *err = bq_escape_error(h);
-        return nil;
+    // watchOS 26.x may permit a direct read even when MCM grants no sandbox
+    // extension. Prefer the non-mutating read path before trying any escape.
+    NSData *data = [NSData dataWithContentsOfFile:BQMobileGestaltPath()];
+    if (bq_valid_gestalt_data(data)) {
+        BQLog(@"MG read-first backup: direct read succeeded (%lu bytes)",
+              (unsigned long)data.length);
+    } else {
+        BQLog(@"MG read-first backup: direct read unavailable; using existing fallback");
+        NSString *link = nil;
+        int64_t h = BQEscape(kMGCaches, &link);
+        if (h < 0) {
+            if (err) *err = bq_escape_error(h);
+            return nil;
+        }
+        data = [NSData dataWithContentsOfFile:
+                [link stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"]];
+        BQEndEscape(h);
     }
-    NSData *data = [NSData dataWithContentsOfFile:[link stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"]];
-    BQEndEscape(h);
     if (!bq_valid_gestalt_data(data)) {
         if (err) *err = NSLocalizedString(@"MobileGestalt plist is missing or invalid.", nil);
         return nil;
@@ -1010,15 +1020,28 @@ static BOOL bq_write_data(NSString *path, NSData *data, NSString **err) {
 }
 
 NSMutableDictionary *BQLoadGestalt(NSString **err) {
-    NSString *link = nil;
-    int64_t h = BQEscape(kMGCaches, &link);
-    if (h < 0) {
-        if (err) *err = bq_escape_error(h);
-        return nil;
+    NSMutableDictionary *dict = nil;
+    NSData *directData = [NSData dataWithContentsOfFile:BQMobileGestaltPath()];
+    if (bq_valid_gestalt_data(directData)) {
+        id parsed = [NSPropertyListSerialization propertyListWithData:directData
+                     options:NSPropertyListMutableContainersAndLeaves
+                     format:NULL error:NULL];
+        if ([parsed isKindOfClass:[NSDictionary class]]) {
+            dict = [parsed mutableCopy];
+            BQLog(@"MG read-first load: direct read succeeded");
+        }
     }
-    NSString *plist = [link stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
-    NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:plist];
-    BQEndEscape(h);
+    if (!dict) {
+        NSString *link = nil;
+        int64_t h = BQEscape(kMGCaches, &link);
+        if (h < 0) {
+            if (err) *err = bq_escape_error(h);
+            return nil;
+        }
+        NSString *plist = [link stringByAppendingPathComponent:@"com.apple.MobileGestalt.plist"];
+        dict = [NSMutableDictionary dictionaryWithContentsOfFile:plist];
+        BQEndEscape(h);
+    }
     if (!dict) {
         if (err) *err = NSLocalizedString(@"MobileGestalt plist missing or invalid", nil);
         return nil;
