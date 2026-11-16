@@ -7,7 +7,26 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             if !model.hasBackup {
-                BackupView(model: model)
+                List {
+                    Section("Diagnostics (no backup required)") {
+                        NavigationLink {
+                            MGPermissionDiagnosticsView()
+                        } label: {
+                            Label("MG Diagnostics", systemImage: "stethoscope")
+                        }
+                    }
+                    Section("Setup") {
+                        NavigationLink {
+                            BackupView(model: model)
+                        } label: {
+                            Label("MG Backups", systemImage: "archivebox")
+                        }
+                        Text("Diagnostics can run without creating or modifying a MobileGestalt backup.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("HermesEnabler")
             } else {
                 List {
                     Section("Features") {
