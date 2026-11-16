@@ -19,12 +19,13 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         // Run only once, in a fixed order. No protected writes.
+                        let entitlements = BQRunRuntimeEntitlementDiagnostics() as String
                         let gates = BQRunWriteGateDiagnostics() as String
                         let baseline = BQRunPermissionDiagnostics() as String
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let extended = BQRunExtendedAuthorizationMatrix() as String
-                        let combined = [gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
+                        let combined = [entitlements, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
@@ -46,6 +47,22 @@ struct MGPermissionDiagnosticsView: View {
                         )
                         await MainActor.run {
                             report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button(running ? "Testing…" : "Check actual entitlements (new)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunRuntimeEntitlementDiagnostics() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "watch-entitlement-audit.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
                             running = false
                         }
                     }
