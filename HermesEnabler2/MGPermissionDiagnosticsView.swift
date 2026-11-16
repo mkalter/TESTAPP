@@ -116,6 +116,22 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
+                Button(running ? "Testing…" : "Test file-coordinated MG write proof") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunFileCoordinatorWriteProof() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-filecoord-write-proof.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 Button("Run write-authorization matrix") {
                     guard !running else { return }
                     running = true
