@@ -109,6 +109,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "watch-entitlement-audit.txt",
             "mg-denial-root-cause.txt",
             "mg-api-survey.txt",
+            "mg-service-auth.txt",
             "complete-diagnostics.txt",
             "bqtool-tail.txt"
         ]
@@ -153,6 +154,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "watch-entitlement-audit.txt",
             "mg-denial-root-cause.txt",
             "mg-api-survey.txt",
+            "mg-service-auth.txt",
             "complete-diagnostics.txt",
             "bqtool.log"
         ]
