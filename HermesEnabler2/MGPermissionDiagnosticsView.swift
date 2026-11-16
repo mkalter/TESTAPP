@@ -28,6 +28,7 @@ struct MGPermissionDiagnosticsView: View {
                         // Run only once, in a fixed order. No protected writes.
                         let entitlements = BQRunRuntimeEntitlementDiagnostics() as String
                         let rootCause = BQRunDenialRootCauseDiagnostics() as String
+                        let boundary = BQRunBoundaryDifferentialLab() as String
                         let apiSurvey = BQRunReadOnlyAPISurvey() as String
                         let service = BQRunServiceAuthorizationDiagnostics() as String
                         let gates = BQRunWriteGateDiagnostics() as String
@@ -35,7 +36,7 @@ struct MGPermissionDiagnosticsView: View {
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let extended = BQRunExtendedAuthorizationMatrix() as String
-                        let combined = [entitlements, rootCause, apiSurvey, service, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
+                        let combined = [entitlements, rootCause, boundary, apiSurvey, service, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
@@ -57,6 +58,25 @@ struct MGPermissionDiagnosticsView: View {
                         )
                         await MainActor.run {
                             report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button(running ? "Testing…" : "Differential security lab (ACL + controls)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunBoundaryDifferentialLab() as String
+                        let queued = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-boundary-lab.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            transferStatus = queued
+                                ? "Nieuw grensonderzoek verstuurd naar iPhone → Watch Logs."
+                                : "Rapport lokaal opgeslagen; gebruik 'Send logs to iPhone'."
                             running = false
                         }
                     }
