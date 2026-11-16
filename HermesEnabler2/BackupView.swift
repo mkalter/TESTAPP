@@ -9,6 +9,17 @@ struct BackupView: View {
 
         List {
 
+            Section("Watch Tests") {
+                NavigationLink {
+                    MGPermissionDiagnosticsView()
+                } label: {
+                    Label("MG Tests · 60+ checks", systemImage: "stethoscope")
+                }
+                Text("Deze tests zijn ook zonder MobileGestalt-back-up beschikbaar; er wordt niets naar de beschermde cache geschreven.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             // Initial backup requirement
             if !model.hasBackup {
 
@@ -34,16 +45,6 @@ struct BackupView: View {
                     Text("Every MG write and restore also creates an automatic backup first.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-            }
-
-            // Backup library is always visible,
-            // including when only external backups exist.
-            Section("Diagnostics") {
-                NavigationLink {
-                    MGPermissionDiagnosticsView()
-                } label: {
-                    Label("MG Diagnostics", systemImage: "stethoscope")
                 }
             }
 
