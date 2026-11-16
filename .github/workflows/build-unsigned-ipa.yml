@@ -10,6 +10,7 @@ on:
       - "HermesEnabler2/BQEntitlementRuntime.m"
       - "HermesEnabler2/BQDenialRootCause.m"
       - "HermesEnabler2/BQReadOnlyAPISurvey.m"
+      - "HermesEnabler2/BQServiceAuthorizationProbe.m"
       - "HermesEnabler2/BQPermissionDiagnostics.h"
       - "HermesEnabler2/MGPermissionDiagnosticsView.swift"
       - "HermesEnabler2/ContentView.swift"
