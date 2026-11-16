@@ -394,7 +394,8 @@ final class ContentModel {
         } else if (error as String?) == BQNoSandboxTokenError {
             showAccessAlert = true
         }
-        refreshCapabilityStates()
+        // Avoid dozens of repeated failed MCM queries when the backup failed.
+        if hasBackup { refreshCapabilityStates() }
     }
     
     func refreshCapabilityStates() {
