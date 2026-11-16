@@ -106,11 +106,12 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "kamui26-write-open.txt",
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
+            "watch-entitlement-audit.txt",
             "complete-diagnostics.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
-            print("[WC] Rejected unexpected diagnostic name")
+            print("[WC] Rejected unexpected diagnostic name: \(name)")
             return false
         }
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -147,6 +148,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "kamui26-write-open.txt",
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
+            "watch-entitlement-audit.txt",
             "complete-diagnostics.txt",
             "bqtool.log"
         ]
