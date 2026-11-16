@@ -11,6 +11,9 @@ on:
       - "HermesEnabler2/BQPermissionDiagnostics.h"
       - "HermesEnabler2/MGPermissionDiagnosticsView.swift"
       - "HermesEnabler2/ContentView.swift"
+      - "HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift"
+      - "HermesCompanion/DiagnosticLogsView.swift"
+      - "HermesCompanion/WatchConnectivity/WatchConnectivityManager.swift"
       - 'HermesEnabler2.xcodeproj/project.pbxproj'
 
 permissions:
