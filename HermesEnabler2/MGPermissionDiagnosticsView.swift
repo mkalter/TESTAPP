@@ -4,6 +4,7 @@ import SwiftUI
 struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
+    @State private var transferStatus = ""
 
     var body: some View {
         ScrollView {
@@ -13,6 +14,12 @@ struct MGPermissionDiagnosticsView: View {
                 Text("Resultaten worden automatisch naar de iPhone gestuurd. Open HermesEnabler → Watch Logs voor de volledige rapporten.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                if !transferStatus.isEmpty {
+                    Label(transferStatus, systemImage: "iphone.gen3")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
                 Button("Run complete diagnostics") {
                     guard !running else { return }
@@ -58,11 +65,14 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunRuntimeEntitlementDiagnostics() as String
-                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                        let queued = WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "watch-entitlement-audit.txt", text: output
                         )
                         await MainActor.run {
                             report = output
+                            transferStatus = queued
+                                ? "Entitlement-rapport in de wachtrij voor je iPhone. Open HermesEnabler → Watch Logs."
+                                : "Overdracht niet in wachtrij gezet. Open de iPhone-app en probeer 'Send logs to iPhone' opnieuw."
                             running = false
                         }
                     }
@@ -151,7 +161,8 @@ struct MGPermissionDiagnosticsView: View {
 
                 Button {
                     WatchConnectivityManager.shared.transferSavedDiagnosticReports()
-                    report = "Opgeslagen logs in de wachtrij gezet voor de iPhone. Open HermesEnabler → Watch Logs op je iPhone."
+                    transferStatus = "Overdracht van opgeslagen logs aangevraagd."
+                    report = "Open HermesEnabler → Watch Logs op je iPhone. Tik eventueel op 'Vraag logs op van Apple Watch'."
                 } label: {
                     Label("Send logs to iPhone", systemImage: "iphone.gen3")
                 }
