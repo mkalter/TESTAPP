@@ -1,0 +1,23 @@
+name: Verify offline MobileGestalt firmware audit
+
+on:
+  push:
+    branches:
+      - experiment/private-entitlements-watch
+    paths:
+      - "tools/mg_firmware_audit.py"
+      - ".github/workflows/verify-mg-firmware-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python version
+        run: python3 --version
+      - name: Validate read-only firmware inventory
+        run: python3 tools/mg_firmware_audit.py --self-test
