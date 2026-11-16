@@ -12,4 +12,7 @@ FOUNDATION_EXPORT NSString *BQRunClass7ControlMatrix(void);
 FOUNDATION_EXPORT NSString *BQRunWriteGateDiagnostics(void);
 /// Observes KAMUI Class 13 SystemGroup token issuance, never consumes tokens.
 FOUNDATION_EXPORT NSString *BQRunKAMUI26TokenProbe(void);
+/// Manually compare direct MCM Class 13 token consumption with actual write-open rights.
+/// Opens protected file O_WRONLY then closes immediately, no bytes modified.
+FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
 NS_ASSUME_NONNULL_END
