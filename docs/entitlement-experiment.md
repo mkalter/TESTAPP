@@ -24,6 +24,8 @@ The tool reports entitlements in the code signature and in the embedded provisio
 
 ## Test C: optional signing experiment (Xcode)
 
+A preconfigured experiment branch is available: [experiment/private-entitlements-watch](https://github.com/mkalter/TESTAPP/tree/experiment/private-entitlements-watch). It switches the **Watch** target's Debug and Release `CODE_SIGN_ENTITLEMENTS` setting to the experimental plist; the iPhone companion target is unchanged. **main** retains the original signing settings.
+
 1. Make a separate copy/branch of the project. Keep the baseline entitlement plist and the original Watch target setting unchanged.
 2. For the **HermesEnabler2 Watch target only**, temporarily change **Build Settings → Code Signing Entitlements** from `HermesEnabler2/HermesEnabler2.entitlements` to `HermesEnabler2/EntitlementProbe.private.entitlements`.
 3. Request a **development build signed by your own Apple Developer team**. Record the exact Xcode provisioning/signing error if it fails. Revert the setting afterward.
