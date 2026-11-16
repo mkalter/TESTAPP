@@ -34,6 +34,27 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
     @Published var backupStatus = String(localized: "No Backups")
     @Published var lastVerificationMessage = ""
 
+    // MARK: - Apple Watch diagnostic reports
+
+    @Published var diagnosticLogs: [DiagnosticLog] = []
+    @Published var diagnosticsStatus = "Vraag de logs op vanaf je Apple Watch."
+
+    struct DiagnosticLog: Identifiable {
+        let id: String
+        let fileName: String
+        let originalName: String
+        let date: Date
+        let size: Int
+
+        var formattedDate: String {
+            date.formatted(date: .abbreviated, time: .shortened)
+        }
+
+        var formattedSize: String {
+            ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+        }
+    }
+
     private var session: WCSession?
 
     // MARK: - Backup model
@@ -159,12 +180,110 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         ).backups
     }
 
+    // MARK: - Stored diagnostic logs
+
+    private static func diagnosticDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = base.appendingPathComponent("HermesEnabler/DiagnosticLogs", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func safeDiagnosticName(_ original: String) -> String {
+        let name = URL(fileURLWithPath: original).lastPathComponent
+        let sanitized = String(name.prefix(80)).map { character -> Character in
+            character.isASCII &&
+            (character.isLetter || character.isNumber || character == "." || character == "-" || character == "_")
+                ? character : "_"
+        }
+        let result = String(sanitized)
+        return result.isEmpty ? "report.txt" : result
+    }
+
+    private static func storeDiagnosticLog(
+        data: Data,
+        metadata: [String: Any]?
+    ) throws {
+        guard !data.isEmpty, data.count <= 2_000_000 else {
+            throw NSError(domain: "HermesCompanion.Diagnostics", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Leeg of te groot logbestand."])
+        }
+        let original = safeDiagnosticName(metadata?["fileName"] as? String ?? "report.txt")
+        let date = Date()
+        let fileName = "WatchLog-\(Int(date.timeIntervalSince1970))-\(UUID().uuidString)-\(original)"
+        let destination = try diagnosticDirectory().appendingPathComponent(fileName)
+        try data.write(to: destination, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
+
+    func refreshDiagnosticLogs() {
+        do {
+            let directory = try Self.diagnosticDirectory()
+            let urls = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            diagnosticLogs = urls.filter { $0.lastPathComponent.hasPrefix("WatchLog-") }.compactMap { url in
+                let attributes = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                let fileName = url.lastPathComponent
+                let parts = fileName.split(separator: "-", maxSplits: 6, omittingEmptySubsequences: false)
+                // A UUID has five dash-separated fields.
+                let original = parts.count == 7 ? String(parts[6]) : fileName
+                return DiagnosticLog(
+                    id: fileName,
+                    fileName: fileName,
+                    originalName: original,
+                    date: attributes?.contentModificationDate ?? .distantPast,
+                    size: attributes?.fileSize ?? 0
+                )
+            }.sorted { $0.date > $1.date }
+        } catch {
+            diagnosticsStatus = "Logs laden mislukt: \(error.localizedDescription)"
+        }
+    }
+
+    func diagnosticURL(for record: DiagnosticLog) -> URL? {
+        guard record.fileName == URL(fileURLWithPath: record.fileName).lastPathComponent,
+              record.fileName.hasPrefix("WatchLog-") else { return nil }
+        return try? Self.diagnosticDirectory().appendingPathComponent(record.fileName)
+    }
+
+    func requestDiagnosticLogs() {
+        guard let session, session.activationState == .activated else {
+            diagnosticsStatus = "WatchConnectivity is nog niet verbonden."
+            session?.activate()
+            return
+        }
+        guard session.isPaired, session.isWatchAppInstalled else {
+            diagnosticsStatus = "Installeer de Watch-app om logs op te vragen."
+            return
+        }
+        session.transferUserInfo(["type": "requestDiagnosticLogs", "timestamp": Date().timeIntervalSince1970])
+        diagnosticsStatus = "Logverzoek verstuurd. De Watch stuurt de bestanden zodra watchOS de overdracht verwerkt."
+    }
+
+    private func receiveDiagnosticLog(data: Data, metadata: [String: Any]?) {
+        do {
+            try Self.storeDiagnosticLog(data: data, metadata: metadata)
+            refreshDiagnosticLogs()
+            diagnosticsStatus = "Log ontvangen van Apple Watch."
+        } catch {
+            diagnosticsStatus = "Logoverdracht mislukt: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Initialization
 
     override init() {
         super.init()
 
         loadBackupHistory()
+        refreshDiagnosticLogs()
 
         guard WCSession.isSupported() else {
             print("[WC] WatchConnectivity not supported")
@@ -639,7 +758,20 @@ extension WatchConnectivityManager: WCSessionDelegate {
         _ session: WCSession,
         didReceive file: WCSessionFile
     ) {
-        print("[WC] Backup file received")
+        print("[WC] File received from Watch")
+
+        // WatchConnectivity removes its temporary file when this callback returns,
+        // so read data synchronously before dispatching to MainActor.
+        if file.metadata?["type"] as? String == "diagnosticLog" {
+            do {
+                let data = try Data(contentsOf: file.fileURL)
+                let metadata = file.metadata
+                Task { @MainActor in self.receiveDiagnosticLog(data: data, metadata: metadata) }
+            } catch {
+                print("[WC] Diagnostic report could not be read: \(error.localizedDescription)")
+            }
+            return
+        }
 
         // WCSession removes its temporary file after this delegate returns.
         do {
