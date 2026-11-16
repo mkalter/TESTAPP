@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- EXPERIMENT ONLY: This file is NOT selected in project.pbxproj. -->
+    <!-- Claiming a private entitlement does not confer the entitlement. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.$(COMPANION_BUNDLE_IDENTIFIER)</string>
+    </array>
+    <key>com.apple.security.system-groups</key>
+    <array>
+        <string>systemgroup.com.apple.mobilegestaltcache</string>
+    </array>
+    <key>com.apple.security.system-group-containers</key>
+    <array>
+        <string>systemgroup.com.apple.mobilegestaltcache</string>
+    </array>
+</dict>
+</plist>
