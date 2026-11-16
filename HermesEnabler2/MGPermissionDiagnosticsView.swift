@@ -29,12 +29,13 @@ struct MGPermissionDiagnosticsView: View {
                         let entitlements = BQRunRuntimeEntitlementDiagnostics() as String
                         let rootCause = BQRunDenialRootCauseDiagnostics() as String
                         let apiSurvey = BQRunReadOnlyAPISurvey() as String
+                        let service = BQRunServiceAuthorizationDiagnostics() as String
                         let gates = BQRunWriteGateDiagnostics() as String
                         let baseline = BQRunPermissionDiagnostics() as String
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let extended = BQRunExtendedAuthorizationMatrix() as String
-                        let combined = [entitlements, rootCause, apiSurvey, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
+                        let combined = [entitlements, rootCause, apiSurvey, service, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
@@ -94,6 +95,25 @@ struct MGPermissionDiagnosticsView: View {
                             transferStatus = queued
                                 ? "API-survey in wachtrij voor iPhone → Watch Logs."
                                 : "Overdracht nog niet gereed. Gebruik 'Send logs to iPhone'."
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button(running ? "Testing…" : "Inspect MG service authorization (new)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunServiceAuthorizationDiagnostics() as String
+                        let queued = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-service-auth.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            transferStatus = queued
+                                ? "Service-autorisatierapport naar iPhone → Watch Logs."
+                                : "Overdracht nog niet actief. Gebruik 'Send logs to iPhone'."
                             running = false
                         }
                     }
