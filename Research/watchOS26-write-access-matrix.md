@@ -26,6 +26,9 @@ Updated: 2026-11-16. Scope: **write access**, not app signing, reading offsets, 
 
 Note: DeviceBrand values and cache offsets are not a substitute for obtaining write authorization. Do not attempt cache modifications based solely on an unverified offset.
 
+## Conflicting third-party iOS 26 claim
+[GoldensHQ/WorstGestalt](https://github.com/GoldensHQ/worstgestalt) claims that its `bad_query` backend works with MobileGestalt on iOS 26. However, [Erosion](https://github.com/jailbreakdotparty/Erosion) explicitly describes iOS 26 as having no MobileGestalt write support with `worse_query`, and the original `bad_query` README does not claim SystemGroup access on 26. This is **unverified/contradictory**, not evidence of working writes on watchOS 26.6.1. A repeatable on-device, protected-file write outcome would be needed before treating the claim as transferable.
+
 ## Why iOS/watchOS 26 may differ from 27
 
 ### H1 — Class 7 token availability differs by container category
@@ -34,27 +37,27 @@ Note: DeviceBrand values and cache offsets are not a substitute for obtaining wr
 - **Limit**: even an own-App-Group token does not grant SystemGroup access.
 
 ### H2 — Class 13 returns a narrower extension class
-- **Evidence**: on 23U95, a Class 13 request returned a \`com.apple.sandbox.system-group\` extension that did not permit writing.
+- **Evidence**: on 23U95, a Class 13 request returned a `com.apple.sandbox.system-group` extension that did not permit writing.
 - **Test**: compare the published extension class against the effective sandbox policy and file-write operation results.
-- **Limit**: a successful \`sandbox_extension_consume\` means that the token was accepted, not that the requested write is authorized.
+- **Limit**: a successful `sandbox_extension_consume` means that the token was accepted, not that the requested write is authorized.
 
 ### H3 — An additional private entitlement is required on 26
-- **Evidence**: static sandbox rules from the 23U95 OTA were reported to require a SystemGroup token **and** one of the private entitlements \`com.apple.security.system-group-containers\` or \`com.apple.security.system-groups\` for \`file-write-data\`.
-- **Test**: read the signed process's entitlement presence, compare \`sandbox_check\` for \`file-read-data\`, \`file-write-data\`, \`file-write-create\`; audit corresponding published policy findings for 27.
+- **Evidence**: static sandbox rules from the 23U95 OTA were reported to require a SystemGroup token **and** one of the private entitlements `com.apple.security.system-group-containers` or `com.apple.security.system-groups` for `file-write-data`.
+- **Test**: read the signed process's entitlement presence, compare `sandbox_check` for `file-read-data`, `file-write-data`, `file-write-create`; audit corresponding published policy findings for 27.
 - **Limit**: this hypothesis is strongly supported for the tested extension route; it does not prove that every possible mechanism is impossible.
 
 ### H4 — Independent POSIX ownership or mount restriction
 - **Evidence**: issue #7 reports that MG file ownership and mode are compatible with the app's UID and file flags do not explain EPERM.
-- **Test**: record real/effective UID/GID, \`lstat\` mode/flags/owner, \`statfs\` read-only mount and non-mutating \`open(O_WRONLY|O_NOFOLLOW)\`. Compare with own-Documents/App-Group controls.
+- **Test**: record real/effective UID/GID, `lstat` mode/flags/owner, `statfs` read-only mount and non-mutating `open(O_WRONLY|O_NOFOLLOW)`. Compare with own-Documents/App-Group controls.
 - **Limit**: a writable file descriptor opened and immediately closed does not prove an eventual safe/persistent cache update.
 
 ### H5 — Unsupported helper/XPC setter rather than a filesystem path
-- **Evidence**: published MobileGestaltHelper analysis describes \`rebuildCache:\` as a rebuild operation without a caller-provided value; the RO23 fork observed error=9 for its tested helper calls.
+- **Evidence**: published MobileGestaltHelper analysis describes `rebuildCache:` as a rebuild operation without a caller-provided value; the RO23 fork observed error=9 for its tested helper calls.
 - **Test**: review documented callable interfaces and error semantics *without invoking destructive methods*.
-- **Limit**: no verified DeviceBrand setter on 23U95; \`rebuildCache:\` is **not** a harmless test because it may unlink the live cache.
+- **Limit**: no verified DeviceBrand setter on 23U95; `rebuildCache:` is **not** a harmless test because it may unlink the live cache.
 
 ### H6 — Incorrect application workflow hides distinct errors
-- **Evidence**: earlier TESTAPP code repeatedly invoked BQEscape from capability-refresh calls and treated local fallback \`-5\` as though it were a platform error.
+- **Evidence**: earlier TESTAPP code repeatedly invoked BQEscape from capability-refresh calls and treated local fallback `-5` as though it were a platform error.
 - **Test**: make read, token presence, token consumption, sandbox policy and attempted write-open separate report fields; manually trigger once.
 - **Limit**: fixing instrumentation does not create rights.
 
@@ -91,10 +94,10 @@ Note: DeviceBrand values and cache offsets are not a substitute for obtaining wr
 A claim of genuine 26.6.1 writing support requires a reproducible on-device result on the **exact target hardware/build**, an independently verified backup/recovery procedure, and post-operation integrity checks. Neither a path, token, valid plist layout, successful backup nor read access demonstrates this. This repository does not supply a protected-write payload or bypass.
 
 ## How to use this repository
-1. Pull \`main\` and build the Watch target.
+1. Pull `main` and build the Watch target.
 2. Open **MG Diagnostics** and select **Run complete diagnostics** (or each test separately).
-3. Capture \`Documents/mg-write-gates.txt\`, \`Documents/mg-permission-diagnostics.txt\`, \`Documents/class7-flag-matrix.txt\`; also capture Xcode debugger output.
-4. Compare these against Issue #7 and #17. Include exact build, model, timestamps, and note any \`sandbox_check\` API unavailable results.
+3. Capture `Documents/mg-write-gates.txt`, `Documents/mg-permission-diagnostics.txt`, `Documents/class7-flag-matrix.txt`; also capture Xcode debugger output.
+4. Compare these against Issue #7 and #17. Include exact build, model, timestamps, and note any `sandbox_check` API unavailable results.
 5. If all three reports show independent sandbox denial of write, further repetition of identical flags is low value; focus static policy comparison and supported APIs instead.
 
 ## Excluded due to risk/poor diagnostic value
@@ -102,4 +105,4 @@ A claim of genuine 26.6.1 writing support requires a reproducible on-device resu
 - Rebuilding or deleting the live MobileGestalt cache.
 - Forging Apple-private entitlements or trying to bypass signature enforcement.
 - Staging installation/system service payloads or exploiting new kernel vulnerabilities.
-- Interpreting \`consume=-5\` as a real OS error when the app itself synthesizes it.
+- Interpreting `consume=-5` as a real OS error when the app itself synthesizes it.
