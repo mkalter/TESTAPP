@@ -189,7 +189,8 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
             appropriateFor: nil,
             create: true
         )
-        let directory = base.appendingPathComponent("HermesEnabler/DiagnosticLogs", isDirectory: true)
+        let directory = base.appendingPathComponent("HermesEnabler", isDirectory: true)
+            .appendingPathComponent("DiagnosticLogs", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -197,7 +198,7 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
     private static func safeDiagnosticName(_ original: String) -> String {
         let name = URL(fileURLWithPath: original).lastPathComponent
         let sanitized = String(name.prefix(80)).map { character -> Character in
-            character.isASCII &&
+            character.unicodeScalars.allSatisfy { $0.isASCII } &&
             (character.isLetter || character.isNumber || character == "." || character == "-" || character == "_")
                 ? character : "_"
         }
@@ -231,9 +232,9 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
             diagnosticLogs = urls.filter { $0.lastPathComponent.hasPrefix("WatchLog-") }.compactMap { url in
                 let attributes = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
                 let fileName = url.lastPathComponent
-                let parts = fileName.split(separator: "-", maxSplits: 6, omittingEmptySubsequences: false)
+                let parts = fileName.split(separator: "-", maxSplits: 7, omittingEmptySubsequences: false)
                 // A UUID has five dash-separated fields.
-                let original = parts.count == 7 ? String(parts[6]) : fileName
+                let original = parts.count == 8 ? String(parts[7]) : fileName
                 return DiagnosticLog(
                     id: fileName,
                     fileName: fileName,
