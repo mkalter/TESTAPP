@@ -28,4 +28,6 @@ FOUNDATION_EXPORT NSString *BQRunDenialRootCauseDiagnostics(void);
 FOUNDATION_EXPORT NSString *BQRunReadOnlyAPISurvey(void);
 /// Observe current-process rights, sandbox Mach lookup and launchd name resolution only.
 FOUNDATION_EXPORT NSString *BQRunServiceAuthorizationDiagnostics(void);
+/// Compare protected read-only metadata/ACL/xattrs with isolated own-container file operations.
+FOUNDATION_EXPORT NSString *BQRunBoundaryDifferentialLab(void);
 NS_ASSUME_NONNULL_END
