@@ -113,6 +113,32 @@ To establish an OS-level cause, compare Watch7,5/23U67 → Watch7,5/24R364 and c
 
 No Watch7,5/24R364 sandbox profile dump was independently located and authenticated in this investigation. Therefore the exact text/byte change for system-group `file-write-data` is **unknown**.
 
+## New route triage from the iOS 26 → 27 diffs (added 2026-11-16)
+
+Four **distinct** candidates were checked against the actual sandbox diff, rather than inferred from README statements.
+
+| Candidate | Code/policy evidence | Testability on stock watchOS 26.6.1 | Conclusion |
+|---|---|---|---|
+| **Generic `com.apple.app-sandbox.read-write` for SystemGroup** | [cross-version `Sandbox.md`](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/Sandbox.md), `containermanagerd`, lines ~36051–36117 | Cannot assume iOS 26's MCM issuer can produce it for SystemGroup; iOS 27 expanded the issuer policy | **New OS-level difference, not a proven iOS 26 bypass** |
+| **`temporary-sandbox` generic read/write token** | [26.5→26.6 `Sandbox.md`](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_26_6_23G5028e/Sandbox.md), `temporary-sandbox` around lines ~3877–3959, ~4488–4565 | Visible branches involve application-owned paths, CloudDocs/ubiquity and other entitlements; they don't authorize the MG SystemGroup | **No independent third-party MG write path established** |
+| **Apple-signed executable path exceptions** | Same 26.5→26.6 diff, `baseline` around lines ~669–758 | Guarded by `process-attribute is-apple-signed-executable`, absent for developer-signed apps | **Does not grant third-party protected writes** |
+| **MobileGestaltHelper policy modification** | [cross-version `Sandbox.md`](https://github.com/blacktop/ipsw-diffs/blob/main/iOS/26_5_23F77_vs_27_0_24A5355q/Sandbox.md), `MobileGestaltHelper` ~117399–117466 | Diff concerns developer-mode mach/sysctl restrictions, not a new setter | **No new DeviceBrand setter identified** |
+
+**Watch test now added:** `MG Diagnostics → Test Class 13 write-open (no writes)`.
+Unlike the prior token-only observation probe, this **manually**:
+1. Checks baseline `file-write-data` and a direct non-mutating `open(O_WRONLY)`.
+2. Queries the known system group using both the standard and alternate Class 13 flags.
+3. If the system itself returns a token, consumes it, checks `file-write-data` and `open(O_WRONLY)` *without writing any bytes*, then releases it.
+4. Logs file metadata before/after and saves `Documents/kamui26-write-open.txt`.
+
+The test does **not** run automatically in the full diagnostic suite. It does
+not claim that a write-only descriptor implies safe persistent modification.
+No new exploit chain, fabricated entitlement or system-cache rewrite is
+implemented. This test checks the **last missing post-token authorization
+condition on the target hardware**.
+
+**Outcome not yet available:** not built or executed on the physical Watch from this environment.
+
 ## Current technical decision
 
 1. The failure on 23U95 occurs at **protected file authorization**, not plist offsets, signing or the lack of a readable backup.
