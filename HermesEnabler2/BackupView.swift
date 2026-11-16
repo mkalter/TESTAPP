@@ -39,6 +39,14 @@ struct BackupView: View {
 
             // Backup library is always visible,
             // including when only external backups exist.
+            Section("Diagnostics") {
+                NavigationLink {
+                    MGPermissionDiagnosticsView()
+                } label: {
+                    Label("MG Diagnostics", systemImage: "stethoscope")
+                }
+            }
+
             Section("Backup Library") {
 
                 if model.backups.isEmpty {
