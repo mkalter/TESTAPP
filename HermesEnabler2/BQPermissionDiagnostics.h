@@ -10,4 +10,6 @@ FOUNDATION_EXPORT NSString *BQRunPermissionDiagnostics(void);
 FOUNDATION_EXPORT NSString *BQRunClass7ControlMatrix(void);
 /// Map write-authorization boundaries without protected writes or escapes.
 FOUNDATION_EXPORT NSString *BQRunWriteGateDiagnostics(void);
+/// Observes KAMUI Class 13 SystemGroup token issuance, never consumes tokens.
+FOUNDATION_EXPORT NSString *BQRunKAMUI26TokenProbe(void);
 NS_ASSUME_NONNULL_END
