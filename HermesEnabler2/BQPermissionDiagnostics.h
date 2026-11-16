@@ -15,4 +15,7 @@ FOUNDATION_EXPORT NSString *BQRunKAMUI26TokenProbe(void);
 /// Manually compare direct MCM Class 13 token consumption with actual write-open rights.
 /// Opens protected file O_WRONLY then closes immediately, no bytes modified.
 FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
+/// Extended, non-destructive authorization matrix across protected/cache and own paths.
+/// Does not request extensions or write protected data.
+FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
 NS_ASSUME_NONNULL_END
