@@ -21,7 +21,10 @@ typedef const char *(*BQGetContainerPath)(void *);
 typedef void *(*BQXPCString)(const char *);
 typedef void (*BQXPCRelease)(void *);
 typedef int64_t (*BQConsumeToken)(const char *);
-typedef int (*BQReleaseToken)(int64_t);
+typedef int64_t (*BQReleaseToken)(int64_t);
+typedef void *(*BQLastError)(void *);
+typedef int (*BQErrorPOSIX)(void *);
+typedef const char *(*BQErrorMessage)(void *);
 
 static NSString *BQMatrixError(int code) {
     return [NSString stringWithFormat:@"%d (%s)", code, strerror(code)];
@@ -58,6 +61,9 @@ NSString *BQRunClass7ControlMatrix(void) {
     BQCopyToken copyToken = (BQCopyToken)dlsym(lib, "container_copy_sandbox_token");
     BQGetContainerPath getPath = (BQGetContainerPath)dlsym(lib, "container_object_get_path");
     BQFreeQuery freeQuery = (BQFreeQuery)dlsym(lib, "container_query_free");
+    BQLastError lastError = (BQLastError)dlsym(lib, "container_query_get_last_error");
+    BQErrorPOSIX errorPOSIX = (BQErrorPOSIX)dlsym(lib, "container_error_get_posix_errno");
+    BQErrorMessage errorMessage = (BQErrorMessage)dlsym(lib, "container_error_get_message");
     BQXPCString makeString = (BQXPCString)dlsym(RTLD_DEFAULT, "xpc_string_create");
     BQXPCRelease releaseString = (BQXPCRelease)dlsym(RTLD_DEFAULT, "xpc_release");
     BQConsumeToken consumeToken = (BQConsumeToken)dlsym(RTLD_DEFAULT, "sandbox_extension_consume");
@@ -103,6 +109,13 @@ NSString *BQRunClass7ControlMatrix(void) {
         void *result = getResult(query);
         if (!result) {
             [lines addObject:@"query_result=NULL (token not attempted)"];
+            void *errorObject = lastError ? lastError(query) : NULL;
+            if (errorObject) {
+                int posix = errorPOSIX ? errorPOSIX(errorObject) : 0;
+                const char *message = errorMessage ? errorMessage(errorObject) : NULL;
+                [lines addObject:[NSString stringWithFormat:@"MCM last_error posix=%d message=%s",
+                                  posix, message ?: "(null)"]];
+            }
             freeQuery(query);
             continue;
         }
@@ -112,7 +125,15 @@ NSString *BQRunClass7ControlMatrix(void) {
         [lines addObject:[NSString stringWithFormat:@"result_path=%@", path ?: @"(null)"]];
         char *token = copyToken(result);
         [lines addObject:[NSString stringWithFormat:@"token_present=%@", token ? @"YES" : @"NO"]];
-        if (token) {
+        NSString *canonicalRoot = groupRoot.stringByStandardizingPath;
+        NSString *canonicalPath = path.stringByStandardizingPath;
+        BOOL insideOwnGroup = path.length &&
+            ([canonicalPath isEqualToString:canonicalRoot] ||
+             [canonicalPath hasPrefix:[canonicalRoot stringByAppendingString:@"/"]]);
+        if (!insideOwnGroup) {
+            [lines addObject:@"GUARD: returned path is not inside the own group; token not consumed"];
+        }
+        if (token && insideOwnGroup) {
             if (consumeToken && releaseToken) {
                 errno = 0;
                 int64_t handle = consumeToken(token);
@@ -126,8 +147,8 @@ NSString *BQRunClass7ControlMatrix(void) {
             } else {
                 [lines addObject:@"consume=SKIPPED (consume/release unavailable)"];
             }
-            free(token);
         }
+        if (token) free(token);
         freeQuery(query);
     }
     dlclose(lib);
