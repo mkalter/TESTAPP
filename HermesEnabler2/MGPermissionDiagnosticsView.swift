@@ -100,7 +100,7 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
-                Button("Test Class 13 write-open (no writes)") {
+                Button("Test Class 13 direct + file (no writes)") {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
