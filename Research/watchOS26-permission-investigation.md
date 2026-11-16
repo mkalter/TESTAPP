@@ -45,3 +45,28 @@ Thus \`consume=-5\` alone is not an Apple sandbox error code. Check the precedin
 
 ## Non-goals
 No protected writes, file replacement, entitlement forgery, cache rebuilding, changes to provisioning/signing, or automatic exploit retries.
+
+
+## New experimental test: Class 7 flag matrix (own App Group)
+In the Watch UI, choose **MG Diagnostics → Run Class 7 flag matrix**.
+This compares four flag settings used in published worse_query-related code,
+but **only on the app's own entitled App Group**. There is no symlink
+and no request for foreign application or SystemGroup access.
+
+The matrix records per flag:
+- MCM query result present or absent.
+- Returned container path (expected: own App Group).
+- Sandbox token present or absent.
+- Extension consume and release results, when the APIs are available.
+
+The test saves \`Documents/class7-flag-matrix.txt\` and prints \`[Class7Matrix]\`
+in the Xcode console. A successful token is **not** evidence that protected
+MobileGestalt writes are authorized.
+
+### New evidence needed
+The existing Watch log used the combined flag and a symlink; the new
+control provides a no-symlink baseline for the iOS 26 alternate flag. If
+the plain Class 7 group query can produce a token while the symlink query
+cannot, the failure is *not* simply a missing App Group entitlement.
+A denied SystemGroup file-write action must still be investigated
+independently; this control does not test for an exploit or bypass.
