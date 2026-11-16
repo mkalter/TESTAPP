@@ -1,0 +1,57 @@
+name: Build File Coordination MG Proof (unsigned)
+
+on:
+  push:
+    branches:
+      - experiment/file-coordination-mg-write-proof
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode and SDKs
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Compile iPhone companion and watchOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project HermesEnabler2.xcodeproj \
+            -scheme HermesCompanion \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/.ci-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build > build.log 2>&1 || { tail -n 180 build.log; exit 1; }
+          tail -n 30 build.log
+
+      - name: Package unsigned IPA (not directly installable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="$PWD/.ci-build/Build/Products/Release-iphoneos/HermesCompanion.app"
+          WATCH="$HOST/Watch/HermesEnabler2.app"
+          test -d "$HOST"
+          test -d "$WATCH"
+          mkdir -p dist/Payload
+          cp -R "$HOST" dist/Payload/
+          (cd dist && zip -qry HermesEnabler-FileCoord-UNSIGNED.ipa Payload)
+          unzip -l dist/HermesEnabler-FileCoord-UNSIGNED.ipa | grep -m 1 'HermesEnabler2.app/'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-FileCoord-UNSIGNED
+          path: dist/HermesEnabler-FileCoord-UNSIGNED.ipa
+          if-no-files-found: error
+          retention-days: 14
