@@ -121,6 +121,31 @@ The entitlement audit itself now also includes the MobileGestaltCache key.
 | Native Helper has cache-storage entitlement | Apple deliberately signs its daemon with additional privilege | that a normal Xcode developer identity can acquire it |
 | XPC error 9 for ordinary questions (previous research) | server query is rejected, plausibly by descriptor eligibility | direct file write behavior or generic XPC denial |
 
+## G2. New measured runtime evidence from TESTAPP (2026-11-16)
+
+The owner ran **Inspect MG service authorization (new)** on watchOS **26.6.1 / 23U95** and supplied:
+
+| On-device measurement | Value |
+|---|---|
+| `sandbox_check mach-lookup com.apple.mobilegestalt.xpc` | `ALLOW` |
+| `bootstrap_port` symbol / port | `AVAILABLE` / `AVAILABLE` |
+| `bootstrap_look_up` | `kr=0` |
+| Service send right | `YES` |
+| `com.apple.private.security.storage.MobileGestaltCache` (SecTask) | `ABSENT` |
+| `com.apple.security.system-groups` | `ABSENT` |
+| `com.apple.security.system-group-containers` | `ABSENT` |
+| `com.apple.security.application-groups` | `PRESENT` |
+
+**New conclusion:** This particular app **can look up the legitimate MobileGestaltHelper Mach service**, despite missing the Helper's restricted cache entitlements. Name resolution / a send right is **not** an authorization decision for individual XPC methods. The earlier V5–V7 returned `error=9` for ordinary questions and the matching V9 descriptor analysis explain a *separate* server-side question eligibility barrier; do not label `error=9` as a denied bootstrap lookup.
+
+**Research pivot:** Stop probing service-name reachability. Offline analysis should next differentiate:
+- Listener connection acceptance (`listener:shouldAcceptNewConnection:`) from method-specific access checks. The published helper method address alone is **not** a decoded connection authorization proof.
+- Question-specific `_MGServerCopyAnswerWithError` descriptor flags from a method that actually mutates arbitrary values, which is **not present in the published interface**.
+- Private daemon cache-storage entitlement from an app's ordinary developer signature (absent here).
+- A cache maintenance method (`rebuildCache:`, `setCacheSentinel:`) from a value-specific setter; do **not** invoke either on live production Watch.
+
+No new on-device authorization route or protected write is demonstrated by this new log.
+
 ## H. Actual next research priorities, not repeated flag combinations
 
 **High priority:** Corroborate the exact MobileGestaltHelper code-signature claims and the server-answer decision path against the **owner's own hardware-specific 23U95 image** if that binary becomes available. Preserve hashes and avoid treating iOS 26 implementation as an exact watchOS replacement.
