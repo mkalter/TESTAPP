@@ -1,0 +1,49 @@
+name: Entitlements audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Entitlement request plist to inspect (source-only, no signing)
+        type: choice
+        required: true
+        default: baseline
+        options:
+          - baseline
+          - private-probe
+  push:
+    paths:
+      - "scripts/inspect_entitlements.py"
+      - "HermesEnabler2/*.entitlements"
+      - "docs/entitlement-experiment.md"
+      - ".github/workflows/entitlement-audit.yml"
+
+jobs:
+  source-entitlements:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect requested entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          VARIANT="${{ inputs.variant || 'baseline' }}"
+          if [[ "$VARIANT" == "private-probe" ]]; then
+            FILE="HermesEnabler2/EntitlementProbe.private.entitlements"
+          else
+            FILE="HermesEnabler2/HermesEnabler2.entitlements"
+          fi
+          python3 scripts/inspect_entitlements.py --source "$FILE" | tee entitlement-audit.txt
+          {
+            echo "## Entitlement source request audit"
+            echo "This is not an Apple provisioning or signing test."
+            echo '~~~'
+            cat entitlement-audit.txt
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: entitlement-source-audit
+          path: entitlement-audit.txt
