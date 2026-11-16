@@ -2,6 +2,11 @@ name: Build unsigned iPhone + Watch IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - experiment/private-entitlements-watch
+    paths:
+      - .github/workflows/build-unsigned-ipa.yml
 
 permissions:
   contents: read
