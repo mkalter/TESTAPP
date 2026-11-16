@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Manually triggered, non-destructive permission checks. No BQEscape calls.
+/// Manually triggered, non-destructive tests; no BQEscape calls or system writes.
 struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
@@ -10,7 +10,7 @@ struct MGPermissionDiagnosticsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Permission Diagnostics")
                     .font(.headline)
-                Text("Tests permissions only. It never changes MobileGestalt or requests a sandbox extension. A temporary control file is created only inside your own App Group.")
+                Text("The first test checks permissions without requesting an extension. The Class 7 matrix tests extension behavior only for your own App Group, without symlinks or protected writes.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -19,6 +19,19 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunPermissionDiagnostics()
+                        await MainActor.run {
+                            report = output as String
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
+                Button("Run Class 7 flag matrix") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunClass7ControlMatrix()
                         await MainActor.run {
                             report = output as String
                             running = false
