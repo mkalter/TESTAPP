@@ -18,4 +18,7 @@ FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
 /// Extended, non-destructive authorization matrix across protected/cache and own paths.
 /// Does not request extensions or write protected data.
 FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
+/// Read signed claims from this Watch executable and inspect process entitlements when supported.
+/// Never requests privileges or accesses MobileGestalt files.
+FOUNDATION_EXPORT NSString *BQRunRuntimeEntitlementDiagnostics(void);
 NS_ASSUME_NONNULL_END
