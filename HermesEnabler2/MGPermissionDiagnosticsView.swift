@@ -14,6 +14,23 @@ struct MGPermissionDiagnosticsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
+                Button("Run complete diagnostics") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        // Run only once, in a fixed order. No protected writes.
+                        let gates = BQRunWriteGateDiagnostics() as String
+                        let baseline = BQRunPermissionDiagnostics() as String
+                        let class7 = BQRunClass7ControlMatrix() as String
+                        let combined = [gates, baseline, class7].joined(separator: "\n\n")
+                        await MainActor.run {
+                            report = combined
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 Button(running ? "Testing…" : "Run one test") {
                     guard !running else { return }
                     running = true
