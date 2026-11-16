@@ -49,6 +49,19 @@ static NSString *BQWOOpenOnly(NSString *path) {
     return @"ALLOWED (descriptor closed immediately, no data written)";
 }
 
+// Classify only known public extension-class labels; never export the
+// raw sandbox token (it is a security-sensitive bearer capability).
+static NSString *BQWOExtensionClass(const char *raw) {
+    if (!raw) return @"NONE";
+    if (strstr(raw, "com.apple.app-sandbox.read-write"))
+        return @"com.apple.app-sandbox.read-write";
+    if (strstr(raw, "com.apple.app-sandbox.read"))
+        return @"com.apple.app-sandbox.read";
+    if (strstr(raw, "com.apple.sandbox.system-group"))
+        return @"com.apple.sandbox.system-group";
+    return @"UNKNOWN (unrecognized or opaque token)";
+}
+
 static NSString *BQWOSandboxStatus(BQWOCheck check, NSString *path) {
     if (!check) return @"UNKNOWN: sandbox_check unavailable";
     errno = 0;
@@ -172,6 +185,7 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
             [out addObject:[NSString stringWithFormat:@"MCM result=%@", res ? @"YES" : @"NO"]];
             char *raw = res ? token(res) : NULL;
             [out addObject:[NSString stringWithFormat:@"token=%@", raw ? @"YES" : @"NO"]];
+            [out addObject:[NSString stringWithFormat:@"token_class=%@", BQWOExtensionClass(raw)]];
             if (raw) {
                 errno = 0;
                 int64_t h = consume(raw);
