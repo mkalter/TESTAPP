@@ -14,7 +14,7 @@ static NSString *BQProbeLib(NSString *name, NSString *path,
     if (!lib) {
         const char *why = dlerror();
         [lines addObject:[NSString stringWithFormat:
-            @"  dynamic loader: %s", why ?: "unknown"];
+            @"  dynamic loader: %s", why ?: "unknown"]];
         return [lines componentsJoinedByString:@"\n"];
     }
     for (NSString *symbol in symbols) {
