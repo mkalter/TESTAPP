@@ -154,6 +154,13 @@ NSString *BQRunFileCoordinatorWriteProof(void) {
                                            error:&coordError
                                       byAccessor:^(NSURL *coordinatedURL) {
             accessorCalled = YES;
+            if (!coordinatedURL.isFileURL ||
+                ![coordinatedURL.path isEqualToString:path]) {
+                result = [NSString stringWithFormat:
+                          @"SKIPPED: coordinator redirected target to %@",
+                          coordinatedURL.path ?: @"non-file URL"];
+                return;
+            }
             result = BQFCProbeWrite(coordinatedURL.path);
         }];
         [lines addObject:[NSString stringWithFormat:
