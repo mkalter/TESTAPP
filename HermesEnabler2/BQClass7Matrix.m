@@ -141,8 +141,8 @@ NSString *BQRunClass7ControlMatrix(void) {
                 [lines addObject:[NSString stringWithFormat:@"consume=%@",
                                   handle >= 0 ? @"SUCCESS" : BQMatrixError(consumeErr)]];
                 if (handle >= 0) {
-                    int releaseStatus = releaseToken(handle);
-                    [lines addObject:[NSString stringWithFormat:@"release=%d", releaseStatus]];
+                    int64_t releaseStatus = releaseToken(handle);
+                    [lines addObject:[NSString stringWithFormat:@"release=%lld", (long long)releaseStatus]];
                 }
             } else {
                 [lines addObject:@"consume=SKIPPED (consume/release unavailable)"];
