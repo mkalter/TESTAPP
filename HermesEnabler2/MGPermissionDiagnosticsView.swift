@@ -10,7 +10,7 @@ struct MGPermissionDiagnosticsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Permission Diagnostics")
                     .font(.headline)
-                Text("The first test checks permissions without requesting an extension. The Class 7 matrix tests extension behavior only for your own App Group, without symlinks or protected writes.")
+                Text("Resultaten worden automatisch naar de iPhone gestuurd. Open HermesEnabler → Watch Logs voor de volledige rapporten.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -24,6 +24,9 @@ struct MGPermissionDiagnosticsView: View {
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let combined = [gates, baseline, class7, kamui].joined(separator: "\n\n")
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "complete-diagnostics.txt", text: combined
+                        )
                         await MainActor.run {
                             report = combined
                             running = false
@@ -36,7 +39,10 @@ struct MGPermissionDiagnosticsView: View {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
-                        let output = BQRunPermissionDiagnostics()
+                        let output = BQRunPermissionDiagnostics() as String
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-permission-diagnostics.txt", text: output
+                        )
                         await MainActor.run {
                             report = output as String
                             running = false
@@ -49,7 +55,10 @@ struct MGPermissionDiagnosticsView: View {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
-                        let output = BQRunClass7ControlMatrix()
+                        let output = BQRunClass7ControlMatrix() as String
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "class7-flag-matrix.txt", text: output
+                        )
                         await MainActor.run {
                             report = output as String
                             running = false
@@ -62,7 +71,10 @@ struct MGPermissionDiagnosticsView: View {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
-                        let output = BQRunKAMUI26TokenProbe()
+                        let output = BQRunKAMUI26TokenProbe() as String
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "kamui26-token-probe.txt", text: output
+                        )
                         await MainActor.run {
                             report = output as String
                             running = false
@@ -75,7 +87,10 @@ struct MGPermissionDiagnosticsView: View {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
-                        let output = BQRunKAMUI26WriteOpenTest()
+                        let output = BQRunKAMUI26WriteOpenTest() as String
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "kamui26-write-open.txt", text: output
+                        )
                         await MainActor.run {
                             report = output as String
                             running = false
@@ -88,12 +103,23 @@ struct MGPermissionDiagnosticsView: View {
                     guard !running else { return }
                     running = true
                     Task.detached(priority: .utility) {
-                        let output = BQRunWriteGateDiagnostics()
+                        let output = BQRunWriteGateDiagnostics() as String
+                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mg-write-gates.txt", text: output
+                        )
                         await MainActor.run {
                             report = output as String
                             running = false
                         }
                     }
+                }
+                .disabled(running)
+
+                Button {
+                    WatchConnectivityManager.shared.transferSavedDiagnosticReports()
+                    report = "Opgeslagen logs in de wachtrij gezet voor de iPhone. Open HermesEnabler → Watch Logs op je iPhone."
+                } label: {
+                    Label("Send logs to iPhone", systemImage: "iphone.gen3")
                 }
                 .disabled(running)
 
