@@ -47,6 +47,13 @@ static NSString *BQGateMount(NSString *path) {
             (unsigned long long)s.f_flags];
 }
 
+static NSString *BQGateAccess(NSString *path, int mode) {
+    errno = 0;
+    int result = access(path.fileSystemRepresentation, mode);
+    return result == 0 ? @"YES (not proof of open authorization)"
+                       : [@"NO " stringByAppendingString:BQGateErrno(errno)];
+}
+
 static NSString *BQGateOpenNoWrite(NSString *path) {
     errno = 0;
     // Intentionally NO O_CREAT, NO O_TRUNC, NO write(), NO pwrite().
@@ -160,6 +167,8 @@ NSString *BQRunWriteGateDiagnostics(void) {
         [lines addObject:[NSString stringWithFormat:@"path=%@", path]];
         [lines addObject:[NSString stringWithFormat:@"metadata=%@", BQGateStat(path)]];
         [lines addObject:[NSString stringWithFormat:@"filesystem=%@", BQGateMount(path)]];
+        [lines addObject:[NSString stringWithFormat:@"access(R_OK)=%@", BQGateAccess(path, R_OK)]];
+        [lines addObject:[NSString stringWithFormat:@"access(W_OK)=%@", BQGateAccess(path, W_OK)]];
         for (NSString *operation in operations) {
             [lines addObject:[NSString stringWithFormat:@"%@=%@",
                               operation, BQGatePolicy(check, operation, path)]];
