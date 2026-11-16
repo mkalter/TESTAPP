@@ -110,6 +110,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mg-denial-root-cause.txt",
             "mg-api-survey.txt",
             "mg-service-auth.txt",
+            "mg-boundary-lab.txt",
             "complete-diagnostics.txt",
             "bqtool-tail.txt"
         ]
@@ -155,6 +156,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mg-denial-root-cause.txt",
             "mg-api-survey.txt",
             "mg-service-auth.txt",
+            "mg-boundary-lab.txt",
             "complete-diagnostics.txt",
             "bqtool.log"
         ]
