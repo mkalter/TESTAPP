@@ -4,6 +4,7 @@ import SwiftUI
 /// on the iPhone so they remain readable even when the Watch is disconnected.
 struct DiagnosticLogsView: View {
     @ObservedObject var manager: WatchConnectivityManager
+    @State private var copyFeedback = ""
 
     var body: some View {
         List {
@@ -14,6 +15,29 @@ struct DiagnosticLogsView: View {
                     Label("Vraag logs op van Apple Watch", systemImage: "arrow.down.circle")
                 }
                 .disabled(!manager.isPaired || !manager.isWatchAppInstalled)
+
+                Button {
+                    guard let latest = manager.diagnosticLogs.first,
+                          let url = manager.diagnosticURL(for: latest) else {
+                        copyFeedback = "Geen logbestand beschikbaar."
+                        return
+                    }
+                    do {
+                        UIPasteboard.general.string = try String(contentsOf: url, encoding: .utf8)
+                        copyFeedback = "Laatste log gekopieerd. Je kunt het nu plakken op je iPhone."
+                    } catch {
+                        copyFeedback = "Kopiëren mislukt: \(error.localizedDescription)"
+                    }
+                } label: {
+                    Label("Kopieer laatste log naar klembord", systemImage: "doc.on.doc")
+                }
+                .disabled(manager.diagnosticLogs.isEmpty)
+
+                if !copyFeedback.isEmpty {
+                    Text(copyFeedback)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
                 Text(manager.diagnosticsStatus)
                     .font(.footnote)
