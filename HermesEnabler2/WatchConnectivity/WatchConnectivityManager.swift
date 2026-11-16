@@ -107,6 +107,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
             "watch-entitlement-audit.txt",
+            "mg-denial-root-cause.txt",
+            "mg-api-survey.txt",
             "complete-diagnostics.txt",
             "bqtool-tail.txt"
         ]
@@ -149,6 +151,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
             "watch-entitlement-audit.txt",
+            "mg-denial-root-cause.txt",
+            "mg-api-survey.txt",
             "complete-diagnostics.txt",
             "bqtool.log"
         ]
