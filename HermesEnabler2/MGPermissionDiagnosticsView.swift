@@ -24,7 +24,7 @@ struct MGPermissionDiagnosticsView: View {
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let combined = [gates, baseline, class7, kamui].joined(separator: "\n\n")
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
                         await MainActor.run {
@@ -40,7 +40,7 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunPermissionDiagnostics() as String
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "mg-permission-diagnostics.txt", text: output
                         )
                         await MainActor.run {
@@ -56,7 +56,7 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunClass7ControlMatrix() as String
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "class7-flag-matrix.txt", text: output
                         )
                         await MainActor.run {
@@ -72,7 +72,7 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunKAMUI26TokenProbe() as String
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "kamui26-token-probe.txt", text: output
                         )
                         await MainActor.run {
@@ -88,7 +88,7 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunKAMUI26WriteOpenTest() as String
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "kamui26-write-open.txt", text: output
                         )
                         await MainActor.run {
@@ -104,7 +104,7 @@ struct MGPermissionDiagnosticsView: View {
                     running = true
                     Task.detached(priority: .utility) {
                         let output = BQRunWriteGateDiagnostics() as String
-                        _ = WatchConnectivityManager.shared.sendDiagnosticReport(
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "mg-write-gates.txt", text: output
                         )
                         await MainActor.run {
@@ -129,7 +129,6 @@ struct MGPermissionDiagnosticsView: View {
 
                 Text(report)
                     .font(.system(size: 10, design: .monospaced))
-                    .textSelection(.enabled)
             }
             .padding()
         }
