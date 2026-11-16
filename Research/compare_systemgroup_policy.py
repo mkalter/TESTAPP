@@ -19,9 +19,9 @@ import sys
 # iOS 26->27 policy change was therefore invisible even with both profiles.
 # Also cover file-write* / file-read* shorthand.
 RULE_RE = re.compile(
-    r"\\(\\s*(allow|deny)\\s+"
-    r"(file-issue-extension|file-(?:read|write)(?:-[a-z0-9-]+|\\*)?)"
-    r"(?=[\\s\\)])", re.I,
+    r"\(\s*(allow|deny)\s+"
+    r"(file-issue-extension|file-(?:read|write)(?:-[a-z0-9-]+|\*)?)"
+    r"(?=[\s\)])", re.I,
 )
 KEYS = (
     "system-group", "systemgroup", "system-groups", "system-group-containers",
@@ -111,9 +111,9 @@ def main() -> int:
     print(f"Matching rules: 26={len(old)}, 27={len(new)}")
     def phase(rule: str) -> str:
         lowered = rule.lower()
-        if re.search(r"^\\(\\s*(?:allow|deny)\\s+file-issue-extension", lowered):
+        if re.search(r"^\(\s*(?:allow|deny)\s+file-issue-extension", lowered):
             return "ISSUER"
-        if re.search(r"^\\(\\s*(?:allow|deny)\\s+file-write", lowered):
+        if re.search(r"^\(\s*(?:allow|deny)\s+file-write", lowered):
             return "RECEIVER_WRITE"
         return "RECEIVER_READ"
 
