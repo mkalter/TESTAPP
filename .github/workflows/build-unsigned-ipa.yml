@@ -2,6 +2,25 @@ name: Build unsigned iPhone + Watch IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Source branch to build (the actual Watch test)'
+        type: choice
+        required: true
+        default: experiment/private-entitlements-watch
+        options:
+          - experiment/private-entitlements-watch
+          - main
+  push:
+    branches:
+      - main
+      - experiment/private-entitlements-watch
+    paths:
+      - '.github/workflows/build-unsigned-ipa.yml'
+      - 'HermesEnabler2/BQEntitlementRuntime.m'
+      - 'HermesEnabler2/BQPermissionDiagnostics.h'
+      - 'HermesEnabler2/MGPermissionDiagnosticsView.swift'
+      - 'HermesEnabler2/ContentView.swift'
 
 permissions:
   contents: read
@@ -11,7 +30,15 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out selected Watch test source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch || 'experiment/private-entitlements-watch' }}
+      - name: Show selected source
+        run: |
+          echo "Requested source branch: ${{ inputs.source_branch || 'experiment/private-entitlements-watch' }}"
+          git rev-parse --short HEAD
+          grep CODE_SIGN_ENTITLEMENTS HermesEnabler2.xcodeproj/project.pbxproj
       - name: Show selected Xcode and SDKs
         run: |
           xcodebuild -version
