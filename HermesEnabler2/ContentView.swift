@@ -55,7 +55,9 @@ struct ContentView: View {
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
                 model.refreshBackups()
-                model.refreshCapabilityStates()
+                // Without an initial backup, feature probes repeatedly try the
+                // same inaccessible SystemGroup path on watchOS 26.
+                if model.hasBackup { model.refreshCapabilityStates() }
             }
         }
         .confirmationDialog("Restore this backup?", isPresented: $model.showRestoreConfirmation) {
