@@ -8,4 +8,6 @@ NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT NSString *BQRunPermissionDiagnostics(void);
 /// Compare Class 7 flags for the app's own App Group only (no protected target).
 FOUNDATION_EXPORT NSString *BQRunClass7ControlMatrix(void);
+/// Map write-authorization boundaries without protected writes or escapes.
+FOUNDATION_EXPORT NSString *BQRunWriteGateDiagnostics(void);
 NS_ASSUME_NONNULL_END
