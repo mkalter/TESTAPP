@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/audit-23u95-mobilegestalt-writer.yml'
       - 'Research/firmware-23u95/trace_mobilegestalt_authority.py'
+      - 'Research/firmware-23u95/trace_mg_internal_targets.py'
       - 'Research/firmware-23u95/trace_cfpreferences_authority.py'
   workflow_dispatch:
 
@@ -87,6 +88,12 @@ jobs:
             | tee research-output/analysis-console.txt
           test -s research-output/mobilegestalt-writer-analysis.json
           test -s research-output/mobilegestalt-writer-analysis.txt
+          /tmp/mg-venv/bin/python \
+            Research/firmware-23u95/trace_mg_internal_targets.py \
+            "$(cat research-output/mg-path.txt)" research-output \
+            | tee research-output/internal-targets-console.txt
+          test -s research-output/mg-internal-call-targets.json
+          test -s research-output/mg-internal-call-targets.txt
       - name: Upload results and provenance only
         if: always()
         uses: actions/upload-artifact@v4
