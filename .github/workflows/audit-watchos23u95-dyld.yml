@@ -73,10 +73,21 @@ jobs:
           timeout 120 /tmp/ipswcli/ipsw dyld info "$CACHE" \
             > report/cache-info.txt 2>&1
           echo "dyld_info_exit=$?" >> report/status.txt
-          for target in ContainerManagerCommon ContainerManagerSystem ContainerManagerUser libMobileGestalt; do
+          timeout 180 /tmp/ipswcli/ipsw dyld image "$CACHE" \
+            > report/cache-image-list.txt 2>&1
+          echo "image_list_exit=$?" >> report/status.txt
+          grep -Ei 'ContainerManager|MobileGestalt' report/cache-image-list.txt \
+            > report/relevant-image-names.txt || true
+
+          for target in \
+            /System/Library/PrivateFrameworks/ContainerManagerCommon.framework/ContainerManagerCommon \
+            /System/Library/PrivateFrameworks/ContainerManagerSystem.framework/ContainerManagerSystem \
+            /System/Library/PrivateFrameworks/ContainerManagerUser.framework/ContainerManagerUser \
+            /usr/lib/libMobileGestalt.dylib; do
+            label="$(basename "$target")"
             timeout 210 /tmp/ipswcli/ipsw dyld extract "$CACHE" "$target" \
-              -o "$PWD/extracted-frameworks" > "report/extract-$target.log" 2>&1
-            echo "$target-extract_exit=$?" >> report/status.txt
+              -o "$PWD/extracted-frameworks" > "report/extract-$label.log" 2>&1
+            echo "$label-extract_exit=$?" >> report/status.txt
           done
           find extracted-frameworks -type f -printf '%p %s bytes\n' | sort > report/framework-files.txt
 
