@@ -91,6 +91,9 @@ static NSArray<NSDictionary<NSString *, NSString *> *> *NFBServices(void) {
         @{@"name":@"com.apple.ClockKit.CLKWatchFaceLibrary", @"role":@"ClockKit public face import control"},
         @{@"name":@"com.apple.NanoTimeKit.complication", @"role":@"NanoTimeKit generic allowlist control"},
         @{@"name":@"com.apple.nanofacegallery.librarybroker.server", @"role":@"native face library broker candidate"},
+        @{@"name":@"com.apple.nanofacegallery.gallerybroker.server", @"role":@"native gallery broker candidate"},
+        @{@"name":@"com.apple.nanotimekit.collectionserver", @"role":@"native collection server candidate"},
+        @{@"name":@"com.apple.nanotimekit.companionrelayserver", @"role":@"Watch/phone relay candidate"},
         @{@"name":@"com.apple.nanotimekit.replication.library.listener", @"role":@"native face replication listener"},
         @{@"name":@"com.apple.nanotimekit.facesupportserver", @"role":@"face assets service"},
         @{@"name":@"com.apple.nanotimekit.facesnapshotserver", @"role":@"snapshot service"},
@@ -209,6 +212,11 @@ NSString *BQRunNativeFaceStorePolicy(void) {
         @{@"label":@"FaceSupport assets", @"path":@"/private/var/mobile/Library/NanoTimeKit/FaceSupport/Assets"},
         @{@"label":@"FaceSupport date store", @"path":@"/private/var/mobile/Library/NanoTimeKit/FaceSupport/DateDatabase.db"},
         @{@"label":@"NanoTimeKit prefs candidate", @"path":@"/private/var/mobile/Library/Preferences/com.apple.NanoTimeKit.face.plist"},
+        @{@"label":@"NanoRegistry pref candidate", @"path":@"/private/var/mobile/Library/Preferences/com.apple.NanoRegistry.plist"},
+        @{@"label":@"Paired registry root candidate", @"path":@"/private/var/mobile/Library/DeviceRegistry"},
+        @{@"label":@"Paired registry state candidate", @"path":@"/private/var/mobile/Library/DeviceRegistry.state"},
+        @{@"label":@"Paired registry secure history candidate", @"path":@"/private/var/mobile/Library/DeviceRegistry.state/historySecureProperties.plist"},
+        @{@"label":@"Paired-sync preferences candidate", @"path":@"/private/var/mobile/Library/Preferences/com.apple.pairedsync.faces.plist"},
         @{@"label":@"MobileGestalt comparison", @"path":BQMobileGestaltPath()},
         @{@"label":@"own Documents positive control", @"path":BQDocuments()}
     ];
