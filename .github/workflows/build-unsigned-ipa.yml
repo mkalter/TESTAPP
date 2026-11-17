@@ -10,17 +10,26 @@ on:
         default: experiment/private-entitlements-watch
         options:
           - experiment/private-entitlements-watch
+          - feature/native-hermes-watch-app-20261117
           - main
   push:
     branches:
       - main
       - experiment/private-entitlements-watch
+      - feature/native-hermes-watch-app-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
       - 'HermesEnabler2/BQPermissionDiagnostics.h'
       - 'HermesEnabler2/MGPermissionDiagnosticsView.swift'
       - 'HermesEnabler2/ContentView.swift'
+      - 'HermesEnabler2/BQOriginalHermes.h'
+      - 'HermesEnabler2/BQOriginalHermes.m'
+      - 'HermesEnabler2/OriginalHermesView.swift'
+      - 'HermesEnabler2/WatchFacesView.swift'
+      - 'HermesEnabler2/BackupView.swift'
+      - 'HermesEnabler2/Bridging-Header.h'
+      - 'HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift'
       - 'HermesEnabler2.xcodeproj/project.pbxproj'
 
 permissions:
@@ -28,16 +37,16 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 45
     steps:
       - name: Check out selected Watch test source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_branch || 'experiment/private-entitlements-watch' }}
+          ref: ${{ inputs.source_branch || github.ref_name }}
       - name: Show selected source
         run: |
-          echo "Requested source branch: ${{ inputs.source_branch || 'experiment/private-entitlements-watch' }}"
+          echo "Requested source branch: ${{ inputs.source_branch || github.ref_name }}"
           git rev-parse --short HEAD
           grep CODE_SIGN_ENTITLEMENTS HermesEnabler2.xcodeproj/project.pbxproj
       - name: Show selected Xcode and SDKs
