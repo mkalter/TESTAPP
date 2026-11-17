@@ -16,6 +16,7 @@ on:
           - experiment/mgsetanswer-real-write-20261117
           - research/independent-mg-write-surfaces-20261117
           - fix/iokit-chosen-property-discovery-20261117
+          - fix/native-hermes-23u95-cache-layout-20261117
           - main
   push:
     branches:
@@ -27,6 +28,7 @@ on:
       - experiment/mgsetanswer-real-write-20261117
       - research/independent-mg-write-surfaces-20261117
       - fix/iokit-chosen-property-discovery-20261117
+      - fix/native-hermes-23u95-cache-layout-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
@@ -44,6 +46,9 @@ on:
       - 'HermesEnabler2/Bridging-Header.h'
       - 'HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift'
       - 'HermesEnabler2.xcodeproj/project.pbxproj'
+      - 'HermesEnabler2/MGOffsets.plist'
+      - 'HermesEnabler2/MGDefaults.plist'
+      - 'tests/test_ultra_layouts.py'
 
 permissions:
   contents: read
@@ -66,6 +71,9 @@ jobs:
         run: |
           xcodebuild -version
           xcodebuild -showsdks
+      - name: Validate watchOS MobileGestalt layout descriptors
+        run: |
+          python3 tests/test_ultra_layouts.py
       - name: Build iPhone host and embedded Watch app (unsigned)
         shell: bash
         run: |
