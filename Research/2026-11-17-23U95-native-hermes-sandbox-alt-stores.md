@@ -40,7 +40,7 @@ The actual live Watch6,18 data was `deviceCategory=4`, `collectionType=9`, `NTKS
 The same SHA-guarded disassembly verifies:
 - **Hades**: immediately rejects `deviceCategory=4` at **0x1328/0x132C**, regardless of later preference or collection settings.
 - **Bellona**: separately checks category, other comparisons, PDR capability and `collectionType=5`, falling back to `NTKShowHardwareSpecificFaces`. No demonstrated acceptance for this Ultra1.
-- **Hermès 2025**: actual `NTKHermes2025FaceBundle` original `isRestrictedForDevice:` code is independently extracted and disassembled at **0x3B2C**, with a further branch helper call. Its precise category whitelist is still a sourced prior third-party static analysis, not inferred from one call site; actual helper must be interpreted separately.
+- **Hermès 2025**: the genuine `NTKHermes2025FaceBundle` original `isRestrictedForDevice:` at **0x3B2C** delegates to the helper at **0x46B8**. Both addresses were independently disassembled from the same hash-verified 23U95 Mach-O in [run #44112313325](https://github.com/mkalter/TESTAPP/actions/runs/44112313325). The helper checks additional conditions and explicitly compares a **device-derived return value to `5` at 0x4744**. It calls other still-unresolved functions and branches on their results, so **the precise Hermès 2025 authorization formula is NOT fully reconstructed from this disassembly**. A successful or failed comparison against 5 alone is not proof of an allowlist or device acceptance.
 
 This is original signed Apple code; editing a JSON plist or feature preference does not patch these functions.
 
