@@ -9,6 +9,17 @@ struct BackupView: View {
 
         List {
 
+            Section("Hermès wijzerplaten") {
+                NavigationLink {
+                    OriginalHermesView()
+                } label: {
+                    Label("Bekijk 6 originele wijzerplaten", systemImage: "clock")
+                }
+                Text("Werkt los van de MobileGestalt-back-up. Alleen zichtbaar binnen deze app; geen systeemwijzerplaat.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Watch Tests") {
                 NavigationLink {
                     MGPermissionDiagnosticsView()
