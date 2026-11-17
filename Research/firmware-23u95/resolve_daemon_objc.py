@@ -20,7 +20,9 @@ KEYWORDS = ("removeUnavailableFacesFromStore", "migrateBundleFacesInStore",
             "setFaceLibrary", "createFaceLibrary", "resetFaceLibrary",
             "faceLibrary", "pairedsync", "librarybroker",
             "resetWithFaces", "faceStyleForUUID", "removeFaceForUUID",
-            "addFace", "faceForUUID", "setOrderedUUIDs", "synchronize")
+            "addFace", "faceForUUID", "setOrderedUUIDs", "synchronize",
+            "shouldAcceptNewConnection", "listener", "xpc", "connection",
+            "validate", "entitle", "authorize", "libraryBroker")
 
 def u32(buf: bytes, off: int) -> int:
     return struct.unpack_from("<I", buf, off)[0]
