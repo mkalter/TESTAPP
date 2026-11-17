@@ -48,6 +48,7 @@ on:
       - 'HermesEnabler2/Bridging-Header.h'
       - 'HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift'
       - 'HermesEnabler2.xcodeproj/project.pbxproj'
+      - 'HermesCompanion/ContentView.swift'
 
 permissions:
   contents: read
