@@ -19,6 +19,7 @@
 
 typedef int (*NFBSandboxCheck)(pid_t, const char *, int, ...);
 typedef kern_return_t (*NFBLaunchdLookup)(mach_port_t, const char *, mach_port_t *);
+typedef kern_return_t (*NFBSpecialPort)(mach_port_t, int, mach_port_t *);
 
 static const int NFBFilterPath = 1;          // SANDBOX_FILTER_PATH
 static const int NFBFilterGlobalName = 2;    // SANDBOX_FILTER_GLOBAL_NAME
@@ -122,8 +123,25 @@ NSString *BQRunNativeFaceBootstrapLookup(void) {
         return NFBFinish(lines, @"native-face-bootstrap-lookup.txt");
     }
     mach_port_t boot = MACH_PORT_NULL;
-    kern_return_t result = task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &boot);
-    [lines addObject:[NSString stringWithFormat:@"TASK_BOOTSTRAP_PORT status=%d", result]];
+    BOOL borrowed = NO;
+    kern_return_t result = KERN_FAILURE;
+    // Apple marks the direct task_get_special_port declaration unavailable
+    // in the watchOS SDK. Runtime resolution keeps this test buildable and
+    // reports UNAVAILABLE rather than assuming that the SPI exists.
+    NFBSpecialPort special = (NFBSpecialPort)dlsym(RTLD_DEFAULT, "task_get_special_port");
+    if (special) {
+        result = special(mach_task_self(), TASK_BOOTSTRAP_PORT, &boot);
+    } else {
+        mach_port_t *selfBootstrap = (mach_port_t *)dlsym(RTLD_DEFAULT, "bootstrap_port");
+        if (selfBootstrap && *selfBootstrap != MACH_PORT_NULL) {
+            boot = *selfBootstrap;
+            borrowed = YES;
+            result = KERN_SUCCESS;
+        }
+    }
+    [lines addObject:[NSString stringWithFormat:@"Own bootstrap source=%@ status=%d",
+        borrowed ? @"bootstrap_port" : (special ? @"runtime task_get_special_port" : @"unavailable"),
+        result]];
     if (result != KERN_SUCCESS || boot == MACH_PORT_NULL) {
         [lines addObject:@"Could not obtain own bootstrap port. No service queried."];
         return NFBFinish(lines, @"native-face-bootstrap-lookup.txt");
@@ -137,7 +155,7 @@ NSString *BQRunNativeFaceBootstrapLookup(void) {
             service, kr, received ? @"RECEIVED" : @"NONE"]];
         if (target != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), target);
     }
-    mach_port_deallocate(mach_task_self(), boot);
+    if (!borrowed) mach_port_deallocate(mach_task_self(), boot);
     [lines addObject:@"Received ports were released immediately; no messages sent."];
     return NFBFinish(lines, @"native-face-bootstrap-lookup.txt");
 }
