@@ -17,6 +17,8 @@ on:
           - research/independent-mg-write-surfaces-20261117
           - fix/iokit-chosen-property-discovery-20261117
           - experiment/watchos23u95-native-face-boundary-lab-20261117
+      - experiment/23u95-geod-exact-open-only-20261117
+          - experiment/23u95-geod-exact-open-only-20261117
           - main
   push:
     branches:
@@ -39,6 +41,7 @@ on:
       - 'HermesEnabler2/ContentView.swift'
       - 'HermesEnabler2/BQOriginalHermes.h'
       - 'HermesEnabler2/BQPathAuthorizationDifferential.m'
+      - 'HermesEnabler2/BQKAMUI26WriteOpen.m'
       - 'HermesEnabler2/BQMobileGestaltSetterProbe.m'
       - 'HermesEnabler2/BQIODeviceTreeWriteProbe.m'
       - 'HermesEnabler2/BQOriginalHermes.m'
