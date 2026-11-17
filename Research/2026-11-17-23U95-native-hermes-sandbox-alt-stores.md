@@ -78,6 +78,26 @@ This is a deliberately **condensed display** of the issuer allow rules. It omits
 | NanoRegistry/PDR/CLKDevice device-capability data | Source of device category, collection, capability getters | `CLKDevice` reads paired-device/registry data; locations and privileges may differ on iPhone/watch. No confirmed ordinary app-group authorization or safe single-file override | Possibly influences real classification only if the system trust chain also accepts it; no proof |
 | `IODeviceTree:/chosen` `marketing-software-behavior` | Static firmware MobileGestalt DeviceBrand provider probe | Physical watch had **no** such key; unrelated `software-behavior` was present. Zero kernel setters executed as their precondition was absent | No demonstrated route to the expected MobileGestalt persistent cache |
 
+## C.1 New native ClockFace first-party FaceSupport entitlement evidence
+
+The **exact original** watchOS 23U95 `/Applications/ClockFace.app/ClockFace` executable (405,520 bytes) was independently extracted from Apple's system image during [run #44111373781](https://github.com/mkalter/TESTAPP/actions/runs/44111373781). Its embedded code-signing text includes:
+
+- **`com.apple.private.security.storage.NanoTimeKit.FaceSupport`**
+- **`com.apple.nanotimekit.facesupportserver`**
+- **`com.apple.nanotimekit.facesnapshotserver`**
+- `com.apple.NanoTimeKit.face`
+- `com.apple.Carousel.NTKServer`
+
+The same build's kernel `baseline.sb` at the FaceSupport read/map/metadata exception branches, around lines **706**, **1416**, and **3669**, checks for one of:
+- `com.apple.private.security.storage.NanoTimeKit.Argon`
+- `com.apple.private.security.storage.NanoTimeKit.FaceSupport`
+
+These are **specifically Apple-private authorizations**, not grants to a developer-signed HermesEnabler. The inspected branches are inside optional `common-debugging-rules` cases and **must not be misrepresented as a complete effective file-write policy**.
+
+This independently demonstrates that the Apple ClockFace process has a legitimate relationship to FaceSupport system storage and owns face-related XPC service endpoints. An ordinary app merely connecting to one of those services does not prove it can request a trusted new Hermès gallery record. The actual service protocol's caller validation and native-library add predicate have not been independently traced in this research.
+
+**Implication:** FaceSupport is a real native-system data plane worth studying, but the current `bad_query` / `worse_query` access classes have **no demonstrated write to it**, and it is not a proven way around signed Hermès class restrictions.
+
 ## D. Preference and internal-build controls are NOT interchangeable
 
 Two real code paths were located in **iOS 26.1** decompiled NanoTimeKit and compared with the matching **23U95** static/watch evidence:
