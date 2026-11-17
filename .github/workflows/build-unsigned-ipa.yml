@@ -16,7 +16,6 @@ on:
           - experiment/mgsetanswer-real-write-20261117
           - research/independent-mg-write-surfaces-20261117
           - fix/iokit-chosen-property-discovery-20261117
-      - experiment/watchos23u95-native-face-boundary-lab-20261117
           - experiment/watchos23u95-native-face-boundary-lab-20261117
           - main
   push:
@@ -29,6 +28,7 @@ on:
       - experiment/mgsetanswer-real-write-20261117
       - research/independent-mg-write-surfaces-20261117
       - fix/iokit-chosen-property-discovery-20261117
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
