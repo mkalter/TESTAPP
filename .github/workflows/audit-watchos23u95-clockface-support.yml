@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          PATTERN='^/(System/Library/PrivateFrameworks/(ClockFaceSupport|CarouselServices|NanoTimeKit|NanoFaceGallery)\\.framework/(ClockFaceSupport|CarouselServices|nanotimekitd|NanoFaceGallery)|System/Library/LaunchDaemons/com\\.apple\\.[^/]*(nanotimekit|ClockFace|clockface|carousel)[^/]*\\.plist|System/Library/CoreServices/Carousel\\.app/Carousel)$'
+          PATTERN='^/(System/Library/PrivateFrameworks/(ClockFaceSupport|CarouselServices|NanoTimeKit|NanoFaceGallery)\.framework/(ClockFaceSupport|CarouselServices|nanotimekitd|NanoFaceGallery)|System/Library/LaunchDaemons/com\.apple\.[^/]*(nanotimekit|ClockFace|clockface|carousel)[^/]*\.plist|System/Library/CoreServices/Carousel\.app/Carousel)$'
           echo "$PATTERN" > research-output/source-pattern.txt
           timeout 1000 /tmp/ipswcli/ipsw extract --remote --files --ranged --pattern "$PATTERN" --output "$PWD/raw" "$IPSW_URL" > research-output/extract.log 2>&1
           echo "extract_exit=$?" > research-output/status.txt
