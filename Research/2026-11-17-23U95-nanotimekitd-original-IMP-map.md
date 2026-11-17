@@ -34,3 +34,34 @@ Importantly, neither `bad_query` Class7 AppGroup scope nor Class13 SystemGroup t
 4. A valid on-device success requires original Hermès face in native Carousel after app termination and watch restart, not an error-free return code or in-app preview.
 
 **Status:** verified mapping, **no new exploit and no native Hermès unlock**.
+
+## Actual 23U95 purge control flow — original disassembly evidence
+
+**Provenance:** [successful GitHub Action #44125314114](https://github.com/mkalter/TESTAPP/actions/runs/44125314114), artifact `watchos23u95-native-face-library-daemon-control-flow`, file `validated-method-disassembly.txt`. The parser matched **103,434 original instruction lines**, and the relative method metadata gave the exact entry `0x8134`.
+
+`_removeUnavailableFacesFromStore:` loops the native face-store enumeration. The function at **0x8260** is a **direct, named `_NTKFaceStyleIsAvailable` symbol stub**, not a guessed Objective-C selector. Its return value is tested:
+
+```asm
+0x8234  ...                   ; load face store and current item
+0x823C  bl  0x6F640          ; get value describing a face item; selector pending stub audit
+0x8244  ldr w0, [x24,#0x64] ; device/class metadata
+0x8248  bl  0x6EE60
+0x8258  mov x0, x27         ; candidate face style
+0x825C  mov x1, x26         ; device object
+0x8260  bl  0x6BD70         ; symbol stub for _NTKFaceStyleIsAvailable
+0x826C  tbnz w28,#0,0x82F0 ; available => keep
+0x82E4  mov x0, x19         ; store
+0x82E8  mov x2, x25         ; candidate item
+0x82EC  bl  0x71020         ; remove path (exact ObjC selector pending audit)
+```
+
+This is **stronger and narrower** than the prior broad speculation that the purge necessarily re-runs `NTKPoodleFace isRestrictedForDevice:`. For this observed branch, the daemon explicitly calls **style-level** availability. No bundle-specific check is visible in this direct call itself. Whether another layer rejects a bundled face upon reopening/switching remains unresolved.
+
+### Practical consequence
+
+A speculative direct face-library record injection is **not automatically disproved by the purge selector's mere existence**, but it would **still not provide native visibility or renderability** unless (a) an authorized persistent update path exists, (b) FaceBundleManager's `isRestrictedForDevice:` lookup accepts it, and (c) normal `_NTKCanAddWatchFace` checks or a separate allowed lifecycle path permit it.
+
+The previous direct protected MobileGestalt write on stock 23U95 still returns `EPERM`; no Class7/Class13 privilege or trusted per-user library write has been demonstrated.
+
+Source conclusions are limited to this exact verified binary. A call to `_NTKFaceStyleIsAvailable` does not prove every validation call in the entire process uses the same predicate.
+
