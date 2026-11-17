@@ -27,6 +27,12 @@ Apple documents that Nike and Hermès faces require the respective hardware. Err
 
 API: https://developer.apple.com/documentation/clockkit/clkwatchfacelibrary/addwatchface(at:completionhandler:)
 
+## Controlled comparison (two real API calls)
+
+- **Positive control:** Export a normal, supported Apple watch face from your own Watch app and import that `.watchface`. If this fails, fix basic ClockKit/file-format/pairing first.
+- **Target test:** Obtain a legitimate Hermès face export (a genuine `.watchface` file) and import that second. Compare exact ClockKit error domains and codes, using the same paired Ultra 1.
+- The app must not claim a Hermès unlock unless the face is actually visible and persists in the **system** Watch Face Gallery on-device after a normal reboot.
+
 ## Outcome interpretation
 
 | Observation | Proven | Not proven |
