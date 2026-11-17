@@ -4,14 +4,32 @@ import hashlib, struct, sys
 from pathlib import Path
 from capstone import Cs, CS_ARCH_ARM64, CS_MODE_LITTLE_ENDIAN
 
-EXPECTED = "bf3f7e360fe06ab7e513807bcb3b6ac695f38c6ea8cd8428b7aed579c2b58e1c"
-GATES = {
- "NTKInternalBuild": (0x54601310, 8),
- "NTKShowInternalFaces": (0x546013C4, 80),
- "NTKShowHardwareSpecificFaces": (0x546014DC, 100),
- "FaceBundleManager.enumerate": (0x544B0C4C, 80),
- "FaceBundleManager.lookup": (0x544B0DDC, 145),
- "_NTKCanAddWatchFace": (0x54602E48, 145),
+FILES = {
+ "NanoTimeKit": (
+    "bf3f7e360fe06ab7e513807bcb3b6ac695f38c6ea8cd8428b7aed579c2b58e1c",
+    {
+      "NTKInternalBuild": (0x54601310, 8),
+      "NTKShowInternalFaces": (0x546013C4, 80),
+      "NTKShowHardwareSpecificFaces": (0x546014DC, 100),
+      "FaceBundleManager.enumerate": (0x544B0C4C, 80),
+      "FaceBundleManager.lookup": (0x544B0DDC, 145),
+      "_NTKCanAddWatchFace": (0x54602E48, 145),
+    }
+ ),
+ "NTKZeusFaceBundle": (
+    "2b34d3d411b77ee73f3892638f419eda83b7bedc4653ecf44adf7c975bbd72e4",
+    {
+      "NTKPoodleFace.isRestrictedForDevice": (0x13B4, 30),
+      "NTKHadesFace.isRestrictedForDevice": (0x12FC, 45),
+      "NTKBellonaFace.isRestrictedForDevice": (0x21E80, 40),
+    }
+ ),
+ "NTKHermes2025FaceBundle": (
+    "ca8f29bd478483d5bfcd6a30cae9f324a37e2655e0515a27929596df4dc9af49",
+    {
+      "Hermes2025Face.isRestrictedForDevice": (0x3B2C, 85),
+    }
+ ),
 }
 def sections(data):
     magic, cpu, _, _, ncmds, sizecmds, _ = struct.unpack_from("<IiiIIII",data,0)
@@ -37,12 +55,16 @@ def sections(data):
 def main(path):
     data=Path(path).read_bytes()
     digest=hashlib.sha256(data).hexdigest()
-    print("bytes",len(data),"sha256",digest,"expected",EXPECTED)
-    if digest!=EXPECTED:
+    filename=Path(path).name
+    if filename not in FILES:
+        print("STOP: unsupported firmware component",filename); return 2
+    expected,gates=FILES[filename]
+    print("file",filename,"bytes",len(data),"sha256",digest,"expected",expected)
+    if digest!=expected:
         print("STOP: digest mismatch, no disassembly on wrong firmware"); return 2
     sects=list(sections(data))
     disasm=Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN)
-    for label,(address,count) in GATES.items():
+    for label,(address,count) in gates.items():
         print(chr(10)+"=== ",label,hex(address)," ===")
         found=False
         for name,addr,length,fileoff in sects:
