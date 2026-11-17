@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var showingSystemFaceImporter = false
     @State private var omitClientFaceValidation = false
     @State private var latestNativeImportLog = ""
+    @State private var latestGeneratedHermesURL: URL?
+    @State private var importingGeneratedHermes = false
     @State private var shareURL: ShareItem?
     @State private var alertMessage = ""
     @State private var showingAlert = false
@@ -118,9 +120,32 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Native systeemwijzerplaat", systemImage: "applewatch.watchface")
                     .font(.headline)
-                Text("Importeer een originele gedeelde .watchface via Apple's ClockKit. Dit probeert de wijzerplaat aan het systeem toe te voegen, niet aan HermesEnabler. Een exclusieve Hermès-wijzerplaat kan alsnog door Apple worden geweigerd.")
+                Text("Je hoeft geen .watchface meer op te zoeken. Maak hieronder een testbestand dat verwijst naar Apple's bestaande NTKPoodleFaceBundle en probeer de systeemimport.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                Button {
+                    testGeneratedHermesFace()
+                } label: {
+                    Label("Maak en test Hermès Circulaire (zonder bestand)", systemImage: "applewatch.watchface")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(importingGeneratedHermes)
+                if latestGeneratedHermesURL != nil {
+                    Button {
+                        if let url = latestGeneratedHermesURL {
+                            shareURL = ShareItem(url: url)
+                        }
+                    } label: {
+                        Label("Deel gegenereerd testbestand via Berichten", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Text("Dit maakt een nieuw ZIP-testbestand met de originele native bundel-ID en forMigration=true; het extraheert geen Hermès-wijzerplaat of afbeeldingen van je Watch. De systeemcontrole kan de import nog steeds weigeren.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Divider()
                 Button {
                     omitClientFaceValidation = false
                     showingSystemFaceImporter = true
@@ -246,6 +271,51 @@ struct ContentView: View {
     }
 
     // MARK: - Native Apple Watch system face import (not an in-app viewer)
+
+    // A self-contained import experiment. No Watch or iPhone private files
+    // are accessed; the generated ZIP references the existing native bundle.
+    private func testGeneratedHermesFace() {
+        guard !importingGeneratedHermes else { return }
+        let url: URL
+        do {
+            url = try HermesSystemFaceCandidate.create(migration: true)
+        } catch {
+            showMessage("Kon het synthetische watchface-testbestand niet maken: \(error.localizedDescription)")
+            return
+        }
+
+        latestGeneratedHermesURL = url
+        importingGeneratedHermes = true
+
+        NativeSystemFaceImportProbe.importFaceSkippingClientValidation(at: url) { error in
+            DispatchQueue.main.async {
+                importingGeneratedHermes = false
+                let status: String
+                if let error {
+                    let nsError = error as NSError
+                    status = "DENIED domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+                } else {
+                    status = "NO_IMMEDIATE_ERROR (not proof of installation)"
+                }
+
+                let log = """
+                === Synthetic Circulaire native ClockKit test ===
+                datetime=\(Date().formatted(.iso8601))
+                iOS=\(ProcessInfo.processInfo.operatingSystemVersionString)
+                file=\(url.lastPathComponent)
+                archive=GENERATED_NOT_EXTRACTED_FROM_WATCH
+                nativeBundle=com.apple.NTKPoodleFaceBundle
+                forMigration=true
+                clientPrevalidation=SKIPPED_IF_PRIVATE_API_EXISTS
+                result=\(status)
+                verifyActualNativeWatchFaceGallery=YES
+                MobileGestaltWrites=NONE
+                """
+                latestNativeImportLog = log
+                showMessage(log)
+            }
+        }
+    }
 
     private func handleSystemFaceImport(_ result: Result<[URL], Error>) {
         switch result {
