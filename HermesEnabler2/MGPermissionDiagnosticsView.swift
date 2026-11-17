@@ -26,11 +26,11 @@ struct MGPermissionDiagnosticsView: View {
                 Text("ANDERE SCHRIJFROUTE · IOKit (3 methodes)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
-                Text("Test drie verschillende IOKit-setters op de originele IODeviceTree-data, zonder de waarde bewust te veranderen.")
+                Text("Controleer eerst of de DeviceBrand-broneigenschap werkelijk bestaat en welk datatype die heeft. Alleen bij een geldige originele CFData worden de drie IOKit-setters aangeroepen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button("TEST: IODeviceTree setters (3 routes)") {
+                Button("TEST: IORegistry property + 3 setters") {
                     confirmIOKitWriter = true
                 }
                 .disabled(running)
@@ -229,7 +229,7 @@ struct MGPermissionDiagnosticsView: View {
             }
             Button("Annuleren", role: .cancel) { }
         } message: {
-            Text("Dit roept echte kernel/IOKit-schrijf-API’s aan met alleen de al bestaande waarde van marketing-software-behavior. Je Apple Watch kan ze weigeren. Alleen handmatig starten; geen wijziging van DeviceBrand gevraagd.")
+            Text("De app leest eerst /chosen, / en /options. Alleen als marketing-software-behavior daadwerkelijk als CFData bestaat, worden IOKit-setters met identieke data aangeroepen. Geen ontbrekende eigenschap wordt aangemaakt.")
         }
         .confirmationDialog(
             "MGSetAnswer echt uitvoeren?",

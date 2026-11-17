@@ -14,6 +14,7 @@
 typedef mach_port_t (*BQEntryFromPath)(mach_port_t, const char *);
 typedef CFTypeRef (*BQEntryRead)(mach_port_t, CFStringRef, CFAllocatorRef, unsigned);
 typedef kern_return_t (*BQEntrySetOne)(mach_port_t, CFStringRef, CFTypeRef);
+typedef kern_return_t (*BQEntryAllProperties)(mach_port_t, CFMutableDictionaryRef *, CFAllocatorRef, unsigned);
 typedef kern_return_t (*BQEntrySetMany)(mach_port_t, CFDictionaryRef);
 typedef kern_return_t (*BQEntryRelease)(mach_port_t);
 typedef kern_return_t (*BQServiceOpen)(mach_port_t, mach_port_t, uint32_t, mach_port_t *);
@@ -29,6 +30,82 @@ static void *BQFindIOKitSymbol(const char *name) {
     if (!library) library = dlopen("/System/Library/PrivateFrameworks/IOKit.framework/IOKit",
                                     RTLD_NOW | RTLD_LOCAL);
     return library ? dlsym(library, name) : NULL;
+}
+
+static NSString *BQTypeOf(CFTypeRef object) {
+    if (!object) return @"MISSING (NULL)";
+    CFTypeID type = CFGetTypeID(object);
+    if (type == CFDataGetTypeID())
+        return [NSString stringWithFormat:@"CFData (%ld bytes)",
+                (long)CFDataGetLength((CFDataRef)object)];
+    if (type == CFStringGetTypeID())
+        return [NSString stringWithFormat:@"CFString (%ld characters)",
+                (long)CFStringGetLength((CFStringRef)object)];
+    if (type == CFNumberGetTypeID())
+        return @"CFNumber (value redacted)";
+    if (type == CFBooleanGetTypeID()) return @"CFBoolean (value redacted)";
+    if (type == CFDictionaryGetTypeID())
+        return [NSString stringWithFormat:@"CFDictionary (%ld keys)",
+                (long)CFDictionaryGetCount((CFDictionaryRef)object)];
+    if (type == CFArrayGetTypeID())
+        return [NSString stringWithFormat:@"CFArray (%ld items)",
+                (long)CFArrayGetCount((CFArrayRef)object)];
+    return [NSString stringWithFormat:@"Other CoreFoundation type ID=%lu",
+            (unsigned long)type];
+}
+
+static void BQInspectNode(BQEntryFromPath fromPath, BQEntryRead get,
+                          BQEntryAllProperties snapshot, BQEntryRelease release,
+                          const char *path, NSMutableArray<NSString *> *rows) {
+    mach_port_t node = fromPath(MACH_PORT_NULL, path);
+    NSString *label = [NSString stringWithUTF8String:path];
+    if (node == MACH_PORT_NULL) {
+        [rows addObject:[NSString stringWithFormat:@"[%@] inaccessible", label]];
+        return;
+    }
+
+    CFStringRef target = CFSTR("marketing-software-behavior");
+    CFTypeRef direct = get(node, target, kCFAllocatorDefault, 0);
+    [rows addObject:[NSString stringWithFormat:@"[%@] target direct read: %@",
+                     label, BQTypeOf(direct)]];
+    if (direct) CFRelease(direct);
+
+    if (snapshot) {
+        CFMutableDictionaryRef properties = NULL;
+        kern_return_t status = snapshot(node, &properties, kCFAllocatorDefault, 0);
+        [rows addObject:[NSString stringWithFormat:@"[%@] property table status: 0x%08x",
+                         label, (unsigned)status]];
+        if (status == KERN_SUCCESS && properties &&
+            CFGetTypeID(properties) == CFDictionaryGetTypeID()) {
+            NSDictionary *dictionary = (__bridge NSDictionary *)properties;
+            id contained = dictionary[@"marketing-software-behavior"];
+            [rows addObject:[NSString stringWithFormat:@"[%@] table: %lu keys; target=%@",
+                            label, (unsigned long)dictionary.count,
+                            BQTypeOf((__bridge CFTypeRef)contained)]];
+            NSMutableArray<NSString *> *relevant = [NSMutableArray array];
+            for (id key in dictionary) {
+                if (![key isKindOfClass:NSString.class]) continue;
+                NSString *lower = [(NSString *)key lowercaseString];
+                if ([lower containsString:@"marketing"] ||
+                    [lower containsString:@"behavior"] ||
+                    [lower containsString:@"devicebrand"]) {
+                    [relevant addObject:key];
+                }
+            }
+            [relevant sortUsingSelector:@selector(compare:)];
+            [rows addObject:[NSString stringWithFormat:@"[%@] matching key names ONLY: %@",
+                            label, relevant.count ? [relevant componentsJoinedByString:@", "]
+                                                  : @"none"]];
+        } else {
+            [rows addObject:[NSString stringWithFormat:@"[%@] property table not readable",
+                            label]];
+        }
+        if (properties) CFRelease(properties);
+    } else {
+        [rows addObject:[NSString stringWithFormat:@"[%@] property-table API missing",
+                         label]];
+    }
+    release(node);
 }
 
 static NSString *BQReturn(kern_return_t r) {
@@ -50,8 +127,9 @@ static NSString *BQSaveRegistryReport(NSMutableArray<NSString *> *rows) {
 
 NSString *BQRunIODeviceTreeWriteProbe(void) {
     NSMutableArray<NSString *> *rows = [NSMutableArray arrayWithObjects:
-        @"=== IODeviceTree same-value write API tests ===",
-        @"Three REAL IOKit setter methods; no MobileGestalt plist write.",
+        @"=== IODeviceTree type discovery + conditional same-value write API tests v2 ===",
+        @"First identifies the real chosen/root/options property types and names.",
+        @"Calls three genuine IOKit setter APIs ONLY if exact original provider CFData exists.",
         @"NEVER changes marketing-software-behavior to a different value.",
         @"CAUTION: kernel / IOKit property setters are undocumented on watchOS.",
         @"Nothing is invoked automatically. Actual behavior on 23U95 is UNKNOWN.",
@@ -65,6 +143,8 @@ NSString *BQRunIODeviceTreeWriteProbe(void) {
 
     BQEntryFromPath fromPath = (BQEntryFromPath)BQFindIOKitSymbol("IORegistryEntryFromPath");
     BQEntryRead get = (BQEntryRead)BQFindIOKitSymbol("IORegistryEntryCreateCFProperty");
+    BQEntryAllProperties readTable =
+        (BQEntryAllProperties)BQFindIOKitSymbol("IORegistryEntryCreateCFProperties");
     BQEntrySetOne setOne = (BQEntrySetOne)BQFindIOKitSymbol("IORegistryEntrySetCFProperty");
     BQEntrySetMany setMany = (BQEntrySetMany)BQFindIOKitSymbol("IORegistryEntrySetCFProperties");
     BQEntryRelease release = (BQEntryRelease)BQFindIOKitSymbol("IOObjectRelease");
@@ -74,6 +154,7 @@ NSString *BQRunIODeviceTreeWriteProbe(void) {
 
     BQRecord(rows, @"IORegistryEntryFromPath", fromPath ? @"PRESENT" : @"MISSING");
     BQRecord(rows, @"IORegistryEntryCreateCFProperty", get ? @"PRESENT" : @"MISSING");
+    BQRecord(rows, @"IORegistryEntryCreateCFProperties", readTable ? @"PRESENT" : @"MISSING");
     BQRecord(rows, @"IORegistryEntrySetCFProperty", setOne ? @"PRESENT" : @"MISSING");
     BQRecord(rows, @"IORegistryEntrySetCFProperties", setMany ? @"PRESENT" : @"MISSING");
     BQRecord(rows, @"IOServiceOpen", openConnection ? @"PRESENT" : @"MISSING");
@@ -101,9 +182,25 @@ NSString *BQRunIODeviceTreeWriteProbe(void) {
 
     CFStringRef property = CFSTR("marketing-software-behavior");
     CFTypeRef original = get(entry, property, kCFAllocatorDefault, 0);
-    if (!original || CFGetTypeID(original) != CFDataGetTypeID()) {
-        [rows addObject:@"STOP: original property missing or not CFData; no IOKit writes attempted."];
-        if (original) CFRelease(original);
+    BQRecord(rows, @"chosen: direct property type", BQTypeOf(original));
+    // Firmware-provider path is verified, but presence on the retail Ultra 1
+    // was never established. Keep root/options probes STRICTLY READ-ONLY.
+    BQInspectNode(fromPath, get, readTable, release, "IODeviceTree:/chosen", rows);
+    BQInspectNode(fromPath, get, readTable, release, "IODeviceTree:/", rows);
+    BQInspectNode(fromPath, get, readTable, release, "IODeviceTree:/options", rows);
+
+    if (!original) {
+        [rows addObject:@"STOP: provider property is ABSENT (or not readable) on this watch."];
+        [rows addObject:@"No IORegistry setter was invoked; missing property is NOT a denied write."];
+        release(entry);
+        return BQSaveRegistryReport(rows);
+    }
+    if (CFGetTypeID(original) != CFDataGetTypeID()) {
+        [rows addObject:[NSString stringWithFormat:
+            @"STOP: original property exists but has type %@, not the firmware-required CFData.",
+            BQTypeOf(original)]];
+        [rows addObject:@"No IORegistry setter was invoked; use the exact observed type to assess ABI."];
+        CFRelease(original);
         release(entry);
         return BQSaveRegistryReport(rows);
     }
