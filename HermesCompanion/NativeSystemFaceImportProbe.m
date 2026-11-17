@@ -24,12 +24,21 @@
         return;
     }
 
+    // Guard every explicit argument, not just BOOL. A nonmatching private
+    // method ABI is a hard stop: calling the wrong IMP may crash the host.
     char *returns = method_copyReturnType(method);
+    char *urlType = method_copyArgumentType(method, 2);
     char *check = method_copyArgumentType(method, 3);
-    BOOL correctABI = returns && returns[0] == 'v' && check &&
-                      (check[0] == 'B' || check[0] == 'c');
+    char *callbackType = method_copyArgumentType(method, 4);
+    BOOL correctABI = returns && returns[0] == 'v' &&
+                      urlType && urlType[0] == '@' &&
+                      check && (check[0] == 'B' || check[0] == 'c') &&
+                      callbackType && callbackType[0] == '@' &&
+                      callbackType[1] == '?';
     if (returns) free(returns);
+    if (urlType) free(urlType);
     if (check) free(check);
+    if (callbackType) free(callbackType);
     if (!correctABI) {
         answer([NSError errorWithDomain:@"HermesSystemFaceImportTest" code:3
                                  userInfo:@{NSLocalizedDescriptionKey:
