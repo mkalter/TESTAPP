@@ -7,4 +7,6 @@
 + (NSString *)presentFaceAtIndex:(NSInteger)index;
 + (void)dismissFace;
 + (void)updateActualReducedLuminance:(BOOL)reduced;
+/// Last face-mount trace. App-local information for troubleshooting, no system mutations.
++ (NSString *)lastDiagnostics;
 @end
