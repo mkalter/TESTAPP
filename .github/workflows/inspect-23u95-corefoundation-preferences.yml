@@ -6,6 +6,7 @@ on:
       - research/23u95-trusted-writer-cfprefsd-20261117
     paths:
       - '.github/workflows/inspect-23u95-corefoundation-preferences.yml'
+      - 'Research/firmware-23u95/trace_cfpreferences_authority.py'
   workflow_dispatch:
 
 permissions:
@@ -78,6 +79,19 @@ jobs:
           test -s research-output/corefoundation-sha256.txt
           echo "SUCCESS: exact firmware CoreFoundation extracted; no on-watch code run" \
             > research-output/result.txt
+      - name: Resolve original cfprefsd CoreFoundation method addresses and bounded direct calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find corefoundation -type f -name 'CoreFoundation' | head -1)"
+          test -n "$CORE"
+          python3 -m venv /tmp/cfprefs-analysis-venv
+          /tmp/cfprefs-analysis-venv/bin/python -m pip install -q capstone==5.0.6
+          /tmp/cfprefs-analysis-venv/bin/python Research/firmware-23u95/trace_cfpreferences_authority.py \
+            "$CORE" research-output
+          test -s research-output/cfprefsd-authority-disassembly.json
+          test -s research-output/cfprefsd-authority-disassembly.txt
+
       - name: Upload text provenance only, never Apple cache or libraries
         if: always()
         uses: actions/upload-artifact@v4
