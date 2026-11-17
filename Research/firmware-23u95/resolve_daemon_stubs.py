@@ -25,6 +25,26 @@ CALL_STUBS = {
     0x6D080:"sync reset dispatch",
     0x6DB60:"sync-reset forwarding",
     0x6C860:"add default store operations",
+    0x6D2E0:"validation callback: input face library",
+    0x6F840:"validation callback: install internal validation block",
+    0x721E0:"validation callback: fetch static value or defaults",
+    0x70EE0:"validation callback: compare/apply validation outcome",
+    0x6F620:"native store add: get face descriptor",
+    0x6E2C0:"native store add: early create or style check",
+    0x6EDE0:"native store add/reset: convert face representation",
+    0x6F040:"native store add/reset: object creation",
+    0x71360:"native store add: face lookup",
+    0x71C80:"native store add: insert order",
+    0x71E60:"native store add: assign face",
+    0x710A0:"sync reset: create new store",
+    0x724E0:"sync reset: compare state",
+    0x70F60:"sync reset: set selected",
+    0x6D380:"sync reset: write ordered UUIDs",
+    0x6D8E0:"sync reset: set face array",
+    0x6D900:"sync reset: set selection",
+    0x6E800:"sync reset: reconcile state",
+    0x6D7C0:"sync reset: process item",
+
 }
 
 def blob_at(buf, sections_, vm, n):
