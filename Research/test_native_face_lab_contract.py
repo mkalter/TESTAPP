@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Offline contract tests for the four *read-only* watchOS native face probes.
+
+This checks static code invariants, not iPhone/Watch sandbox behavior.
+Actual device access requires running the signed watchOS app on 23U95.
+"""
+from pathlib import Path
+import re
+
+root = Path(__file__).resolve().parents[1]
+objc = (root / "HermesEnabler2/BQNativeFaceBoundaryLab.m").read_text()
+swift = (root / "HermesEnabler2/NativeFaceBoundaryLabView.swift").read_text()
+headers = (root / "HermesEnabler2/BQPermissionDiagnostics.h").read_text()
+transport = (root / "HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift").read_text()
+backup = (root / "HermesEnabler2/BackupView.swift").read_text()
+content = (root / "HermesEnabler2/ContentView.swift").read_text()
+
+tests = {
+    "BQRunNativeFaceMachPolicy": "native-face-mach-policy.txt",
+    "BQRunNativeFaceBootstrapLookup": "native-face-bootstrap-lookup.txt",
+    "BQRunNativeFaceStorePolicy": "native-face-store-policy.txt",
+    "BQRunNativeFaceBundleInventory": "native-face-bundle-inventory.txt",
+}
+for func, report in tests.items():
+    assert re.search(r"NSString\s*\*\s*" + func + r"\s*\(void\)", objc), func
+    assert func in headers and func in swift, func
+    assert report in objc and report in transport, report
+
+assert 'NativeFaceBoundaryLabView()' in backup
+assert 'NativeFaceBoundaryLabView()' in content
+assert '"com.apple.nanofacegallery.librarybroker.server"' in objc
+assert '"com.apple.nanotimekit.replication.library.listener"' in objc
+assert '"com.apple.NanoTimeKit.complication"' in objc
+assert '"com.apple.nanofacegallery.gallerybroker.server"' in objc
+assert '"com.apple.nanotimekit.collectionserver"' in objc
+assert 'sandbox_check' in objc and 'bootstrap_look_up' in objc
+assert 'task_get_special_port(mach_task_self()' not in objc, (
+    "Private direct API declared unavailable for watchOS: resolve dynamically")
+assert 'O_RDONLY | O_NOFOLLOW | O_CLOEXEC' in objc
+assert 'open(path.fileSystemRepresentation, flags)' in objc
+assert 'NSString *destination = [BQDocuments() stringByAppendingPathComponent:name]' in objc
+
+# No protected mutating APIs. The caller must not grant private entitlements.
+for pattern in [
+    r'\b(?:pwrite|pwritev|write|writev|ftruncate|truncate|unlink|rename|'
+    r'renameat|symlink|link|mkdir|rmdir|chmod|chown|'
+    r'sandbox_extension_consume|xpc_connection_send_message)\s*\(',
+    r'\bNSXPCConnection\s*\*',
+    r'open\s*\(\s*[^,]+\s*,\s*O_(?:WRONLY|RDWR|CREAT|TRUNC)',
+]:
+    # Strip comments and quoted strings so explanatory text cannot spoof API use.
+    code = re.sub(r'/\*.*?\*/|//[^\n]*', '', objc, flags=re.S)
+    code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
+    assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
+
+print("PASS: four named watchOS probes, their iPhone log transfer and paths")
+print("PASS: pre-backup navigation and matching Swift interface entrypoints")
+print("PASS: only read-only filesystem descriptors; own-Documents log output")
+print("NOTE: no on-device native Hermès unlock inferred from this source test")
