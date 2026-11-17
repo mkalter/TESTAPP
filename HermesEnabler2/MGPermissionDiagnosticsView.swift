@@ -4,6 +4,7 @@ import SwiftUI
 struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
+    @State private var confirmMGSetter = false
 
     var body: some View {
         ScrollView {
@@ -13,6 +14,34 @@ struct MGPermissionDiagnosticsView: View {
                 Text("Resultaten worden automatisch naar de iPhone gestuurd. Open HermesEnabler → Watch Logs voor de volledige rapporten.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                Text("EXPERIMENT · NIEUWE WRITE-ROUTE")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text("Deze proef roept de echte private MGSetAnswer setter aan. Er wordt vooraf een back-up gemaakt. Dit is geen herhaling van de permissiematrix.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("TEST: MGSetAnswer schrijftest") {
+                    confirmMGSetter = true
+                }
+                .disabled(running)
+
+                Button("CHECK: MGSetAnswer na herstart") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQCheckMGSetAnswerCanary() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "mgsetanswer-persistence.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
 
                 Button("Run complete diagnostics") {
                     guard !running else { return }
@@ -166,5 +195,28 @@ struct MGPermissionDiagnosticsView: View {
             .padding()
         }
         .navigationTitle("MG Diagnostics")
+        .confirmationDialog(
+            "MGSetAnswer echt uitvoeren?",
+            isPresented: $confirmMGSetter,
+            titleVisibility: .visible
+        ) {
+            Button("Voer directe settertest uit") {
+                guard !running else { return }
+                running = true
+                Task.detached(priority: .utility) {
+                    let output = BQRunMGSetAnswerWriteExperiment() as String
+                    _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                        name: "mgsetanswer-experiment.txt", text: output
+                    )
+                    await MainActor.run {
+                        report = output
+                        running = false
+                    }
+                }
+            }
+            Button("Annuleren", role: .cancel) { }
+        } message: {
+            Text("Deze proef roept daadwerkelijk een private Apple-setter aan. Er wordt alleen getest als een gevalideerde MG-back-up kan worden aangemaakt. De effecten op watchOS 26 zijn onbekend.")
+        }
     }
 }
