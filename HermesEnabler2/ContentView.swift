@@ -31,6 +31,13 @@ struct ContentView: View {
                             Label("Siri & Intelligence", systemImage: "sparkles")
                         }
                     }
+                    Section("Native systeemwijzerplaten") {
+                        NavigationLink {
+                            NativeFaceBoundaryLabView()
+                        } label: {
+                            Label("Native Face Lab · 4 tests", systemImage: "network")
+                        }
+                    }
                     Section("Utilities") {
                         NavigationLink { BackupView(model: model) } label: {
                             Label("MG Backups", systemImage: "archivebox")
