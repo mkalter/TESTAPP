@@ -13,6 +13,7 @@ on:
           - feature/native-hermes-watch-app-20261117
           - fix/hermes-ultra-three-faces-20261117
           - research/watchos26-write-path-differential-20261117
+          - experiment/mgsetanswer-real-write-20261117
           - main
   push:
     branches:
