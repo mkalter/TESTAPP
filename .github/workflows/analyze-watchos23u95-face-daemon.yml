@@ -37,7 +37,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd /tmp/ipsw-src && GOMAXPROCS=2 GOFLAGS=-p=1 timeout 950 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
+          # Exact source build convention already succeeded in existing 23U95 workflows.
+          # Avoid GOMAXPROCS=2 / GOFLAGS=-p=1 which made the prior job fail
+          # without extraction or disassembly; capture any compiler diagnostic.
+          (cd /tmp/ipsw-src && timeout 700 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw) \
+            2>&1 | tee analysis/ipsw-build.log
           # Ubuntu 24.04 runners may only expose versioned LLVM tools.
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends llvm-18 > analysis/llvm-install.txt
