@@ -21,6 +21,9 @@ TARGETS = {
     0x215C10D0: "internal descriptor getter called in __MGWriteCache",
     0x215B1798: "tail-branch target of __MGCacheCopyValueForKey",
     0x215CAAE0: "previously observed matching-23U95 DeviceBrand provider candidate",
+    0x215C1138: "implementation candidate selected in resolver 0x215B28F0 for mode 2",
+    0x215E1530: "called as boolean precondition by internal writer gate 0x215E128C",
+    0x215B29A4: "alternate resolver path reached from 0x215B2914, beyond first RET",
 }
 MAX_INS = 250
 
