@@ -20,4 +20,8 @@ FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
 FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
 /// Compare sandbox policy at parent/child path boundaries; real writes only in app-owned containers.
 FOUNDATION_EXPORT NSString *BQRunPathAuthorizationDifferential(void);
+/// Real Apple-private MGSetAnswer attempt, guarded by verified backup and recorded disk comparison.
+FOUNDATION_EXPORT NSString *BQRunMGSetAnswerWriteExperiment(void);
+/// Read-only persistence check after reopening Watch app.
+FOUNDATION_EXPORT NSString *BQCheckMGSetAnswerCanary(void);
 NS_ASSUME_NONNULL_END
