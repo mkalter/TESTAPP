@@ -11,6 +11,7 @@ on:
       - 'Research/firmware-23u95/disassemble_native_methods.py'
       - 'Research/firmware-23u95/resolve_daemon_objc.py'
       - 'Research/firmware-23u95/resolve_daemon_stubs.py'
+      - 'Research/firmware-23u95/map_objc_listener_classes.py'
 
 permissions:
   contents: read
@@ -210,6 +211,17 @@ jobs:
           result=$?
           echo "capstone_disassembly_exit=$result" >> analysis/status.txt
           tail -n 55 analysis/verified-native-methods-asm.txt || true
+          exit 0
+
+      - name: Attribute native face listener IMPs to original ObjC classes
+        shell: bash
+        run: |
+          set +e
+          FILE="$(cat analysis/daemon-path.txt)"
+          python3 Research/firmware-23u95/map_objc_listener_classes.py "$FILE" analysis \
+            > analysis/objc-listener-class-attribution.txt 2> analysis/objc-listener-class-attribution-errors.txt
+          echo "listener_class_attribution_exit=$?" > analysis/listener-class-status.txt
+          tail -n 40 analysis/objc-listener-class-attribution.txt || true
           exit 0
 
       - name: Upload original-firmware disassembly results (not binaries)
