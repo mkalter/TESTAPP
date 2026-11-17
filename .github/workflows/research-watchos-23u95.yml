@@ -81,7 +81,7 @@ jobs:
             echo "$cmd: $?" | tee -a research-output/commands/run-status.txt
           done
 
-          for profile in containermanagerd containermanagerd_system MobileGestaltHelper container; do
+          for profile in baseline temporary-sandbox containermanagerd containermanagerd_system MobileGestaltHelper container cfprefsd asd nointernet; do
             timeout 150 /tmp/ipswcli/ipsw sb dec "$KC" "$profile" \
               -O "research-output/commands/${profile}.sb" \
               > "research-output/commands/decompile-${profile}.log" 2>&1
