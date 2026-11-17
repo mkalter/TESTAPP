@@ -88,10 +88,10 @@ def scan(data: bytes):
         for off in range(0,len(raw)-11,4):
             m,t,im=struct.unpack_from("<III",raw,off)
             for name, locations in selectors.items():
-                if not any(x in addr_from_encoded(m) for x in locations|set(refs.get(name,set()))):
+                if not any(x in addr_from_encoded(m) for x in set(locations)|set(refs.get(name,set()))):
                     continue
                 impl=next((x for x in addr_from_encoded(im) if x%4==0 and sec_at(sec,x,4)==code),None)
-                ty=next((str_at(data,sec,x,80) for x in addr_from_encoded(t)),None)
+                ty=next((text for x in addr_from_encoded(t) if (text:=str_at(data,sec,x,80))),None)
                 if impl is not None and ty and any(c in ty for c in "@#:"):
                     hits.append({"name":name,"method_va":hex(impl),"type_encoding":ty,
                                  "metadata_va":hex(block["vm"]+off),"section":block["name"],"encoding":"absolute"})
