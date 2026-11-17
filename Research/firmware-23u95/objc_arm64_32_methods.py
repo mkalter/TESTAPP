@@ -12,21 +12,21 @@ from collections import Counter
 p = Path(sys.argv[1]); buf = p.read_bytes()
 u32=lambda o: struct.unpack_from("<I",buf,o)[0]
 u64=lambda o: struct.unpack_from("<Q",buf,o)[0]
-assert u32(0)==0xfeedfacf, "not MH_MAGIC_64 arm64_32 source"
-ncmds=u32(16); off=32
+assert u32(0)==0xfeedface, "watchOS ARM64_32 uses MH_MAGIC 32-bit Mach-O header"
+ncmds=u32(16); off=28
 secs=[]; segments=[]
 for i in range(ncmds):
     cmd=u32(off); size=u32(off+4)
-    if cmd==0x19:
+    if cmd==0x1:
         segname=buf[off+8:off+24].split(b"\0",1)[0].decode(errors="replace")
-        vm=u64(off+24); vm_size=u64(off+32); foff=u64(off+40); fsize=u64(off+48)
+        vm=u32(off+24); vm_size=u32(off+28); foff=u32(off+32); fsize=u32(off+36)
         segments.append((segname,vm,vm_size,foff,fsize))
-        nsecs=u32(off+64)
+        nsecs=u32(off+48)
         for k in range(nsecs):
-            so=off+72+k*80
+            so=off+56+k*68
             name=buf[so:so+16].split(b"\0",1)[0].decode(errors="replace")
             segment=buf[so+16:so+32].split(b"\0",1)[0].decode(errors="replace")
-            addr=u64(so+32); length=u64(so+40); physical=u32(so+48)
+            addr=u32(so+32); length=u32(so+36); physical=u32(so+40)
             secs.append((segment,name,addr,length,physical))
     off+=size
 def at(vm,length=1):
@@ -67,7 +67,7 @@ def namedlist(vm):
             # relative offsets are relative to fields within each method entry
             mname_va=vm+8+i*item_size+ro
             imp_va=vm+8+i*item_size+8+io
-            method_name=text(mname_va)
+            method_name=text(mname_va) or text(P(mname_va))
         else:
             method_name=text(u32(loc)); imp_va=u32(loc+8)
         if method_name and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_:.]+",method_name):
