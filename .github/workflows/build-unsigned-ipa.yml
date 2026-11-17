@@ -22,6 +22,7 @@ on:
       - feature/native-hermes-watch-app-20261117
       - fix/hermes-ultra-three-faces-20261117
       - research/watchos26-write-path-differential-20261117
+      - experiment/mgsetanswer-real-write-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
