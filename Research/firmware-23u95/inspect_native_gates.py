@@ -31,7 +31,7 @@ def sections(data):
             for k in range(nsects):
                 n,s,a,length,o,*rest=struct.unpack_from("<16s16sIIIIIIIII",data,off+56+68*k)
                 if o+length<=len(data):
-                    yield n.rstrip(b"\\x00").decode("ascii","replace"),a,length,o
+                    yield n.rstrip(bytes([0])).decode("ascii","replace"),a,length,o
         off+=size
 
 def main(path):
@@ -43,7 +43,7 @@ def main(path):
     sects=list(sections(data))
     disasm=Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN)
     for label,(address,count) in GATES.items():
-        print("\\n=== ",label,hex(address)," ===")
+        print(chr(10)+"=== ",label,hex(address)," ===")
         found=False
         for name,addr,length,fileoff in sects:
             if addr<=address<addr+length:
