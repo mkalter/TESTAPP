@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - research/watchos23u95-userland-services-20261117
+      - research/23u95-mobilegestalt-helper-abi-audit-20261117
     paths:
       - '.github/workflows/audit-watchos23u95-userland.yml'
+      - 'Research/firmware-23u95/audit_mobilegestalt_helper.py'
   workflow_dispatch:
 
 permissions:
@@ -112,6 +114,20 @@ jobs:
             echo 'BLOCKED: no APFS files extracted. No independent userland inference.' >> audit/status.txt
           fi
           exit 0
+
+      - name: Verify original MobileGestaltHelper ObjC method implementations
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(find extracted -type f -name MobileGestaltHelper | head -1)"
+          test -n "$FILE"
+          python3 -m venv /tmp/mgh-venv
+          /tmp/mgh-venv/bin/pip install -q capstone==5.0.6
+          /tmp/mgh-venv/bin/python \
+            Research/firmware-23u95/audit_mobilegestalt_helper.py \
+            "$FILE" audit
+          test -s audit/mgh-abi-report.json
+          test -s audit/mgh-abi-report.txt
 
       - name: Archive only report files, never Apple binaries
         if: always()
