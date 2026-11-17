@@ -48,6 +48,7 @@ on:
       - 'HermesEnabler2.xcodeproj/project.pbxproj'
       - 'HermesEnabler2/MGOffsets.plist'
       - 'HermesEnabler2/MGDefaults.plist'
+      - 'HermesCompanion/ContentView.swift'
       - 'tests/test_ultra_layouts.py'
 
 permissions:
