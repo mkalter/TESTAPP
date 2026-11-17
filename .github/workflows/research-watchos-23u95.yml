@@ -37,7 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           curl -fL --retry 4 --retry-delay 3 --connect-timeout 25 "$IP_SW_TOOL" -o /tmp/ipswcli/ipsw.tar.gz
-          tar -tzf /tmp/ipswcli/ipsw.tar.gz | head -20
+          tar -tzf /tmp/ipswcli/ipsw.tar.gz > research-output/commands/ipsw-archive-contents.txt
+          head -n 20 research-output/commands/ipsw-archive-contents.txt
           tar -xzf /tmp/ipswcli/ipsw.tar.gz -C /tmp/ipswcli
           ls -la /tmp/ipswcli
           chmod +x /tmp/ipswcli/ipsw
