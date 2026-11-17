@@ -26,7 +26,7 @@ struct MGPermissionDiagnosticsView: View {
                 Text("ANDERE SCHRIJFROUTE · IOKit (3 methodes)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
-                Text("Test drie verschillende IOKit-setters op de originele IODeviceTree-data, zonder de waarde bewust te veranderen.")
+                Text("Controleer eerst of de DeviceBrand-broneigenschap werkelijk bestaat en welk datatype die heeft. Alleen bij een geldige originele CFData worden de drie IOKit-setters aangeroepen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
