@@ -18,4 +18,6 @@ FOUNDATION_EXPORT NSString *BQRunKAMUI26WriteOpenTest(void);
 /// Extended, non-destructive authorization matrix across protected/cache and own paths.
 /// Does not request extensions or write protected data.
 FOUNDATION_EXPORT NSString *BQRunExtendedAuthorizationMatrix(void);
+/// Compare sandbox policy at parent/child path boundaries; real writes only in app-owned containers.
+FOUNDATION_EXPORT NSString *BQRunPathAuthorizationDifferential(void);
 NS_ASSUME_NONNULL_END
