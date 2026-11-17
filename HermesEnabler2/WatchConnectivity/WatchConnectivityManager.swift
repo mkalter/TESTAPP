@@ -112,6 +112,10 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
             "iodevicetree-write-probe.txt",
+            "native-face-mach-policy.txt",
+            "native-face-bootstrap-lookup.txt",
+            "native-face-store-policy.txt",
+            "native-face-bundle-inventory.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -158,6 +162,10 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
             "iodevicetree-write-probe.txt",
+            "native-face-mach-policy.txt",
+            "native-face-bootstrap-lookup.txt",
+            "native-face-store-policy.txt",
+            "native-face-bundle-inventory.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
