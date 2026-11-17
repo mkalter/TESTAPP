@@ -1,0 +1,144 @@
+name: Deep read-only 23U95 native watch face library daemon disassembly
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/23u95-face-library-daemon-auth-20261117
+    paths:
+      - '.github/workflows/analyze-watchos23u95-face-daemon.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-reverse-engineering:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+      EXPECTED_SHA: 103d9ed37894bac21ff30074ab9eaea8ed0f2932245b90dc67323ad914c026a6
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build current Apple APFS-range research tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p analysis extracted /tmp/ipsw-tool
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          (cd /tmp/ipsw-src && git rev-parse HEAD) > analysis/ipsw-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Compile extraction utility and install LLVM disassembler
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 800 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
+          command -v llvm-objdump
+          llvm-objdump --version | head -3 > analysis/llvm-version.txt
+          /tmp/ipsw-tool/ipsw version > analysis/ipsw-version.txt 2>&1
+
+      - name: Extract exact native watch face daemon from Apple's 23U95 firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/PrivateFrameworks/NanoTimeKit\.framework/nanotimekitd$'
+          timeout 800 /tmp/ipsw-tool/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+            > analysis/extraction.log 2>&1
+          FILE="$(find extracted -type f -name nanotimekitd | head -1)"
+          if [[ -z "$FILE" ]]; then echo 'Missing actual native daemon' >&2; exit 2; fi
+          echo "$FILE" > analysis/daemon-path.txt
+          sha256sum "$FILE" > analysis/native-daemon-hash.txt
+          ACTUAL="$(sha256sum "$FILE" | cut -d ' ' -f1)"
+          if [[ "$ACTUAL" != "$EXPECTED_SHA" ]]; then
+            echo "HASH MISMATCH: $ACTUAL expected $EXPECTED_SHA" >&2
+            exit 3
+          fi
+          file "$FILE" > analysis/daemon-file-type.txt
+          echo 'Original Apple archive not downloaded in full; only remote encrypted APFS byte ranges extracted' > analysis/provenance.txt
+
+      - name: Resolve Objective-C method metadata, symbols, and native control flow
+        shell: bash
+        run: |
+          set +e
+          FILE="$(cat analysis/daemon-path.txt)"
+          llvm-objdump --macho --objc-meta-data "$FILE" \
+            > analysis/all-objc-metadata.tmp 2> analysis/objc-metadata-error.txt
+          echo "objc_metadata_exit=$?" > analysis/status.txt
+          llvm-objdump --macho --syms "$FILE" \
+            > analysis/all-symbols.tmp 2> analysis/symbols-error.txt
+          echo "symbols_exit=$?" >> analysis/status.txt
+          llvm-objdump --macho --disassemble "$FILE" \
+            > analysis/all-disassembly.tmp 2> analysis/disassembly-error.txt
+          echo "disassembly_exit=$?" >> analysis/status.txt
+
+          python3 - <<'PY'
+          import re, pathlib
+          out = pathlib.Path('analysis')
+          terms = [
+            'removeUnavailableFacesFromStore',
+            'migrateBundleFacesInStore',
+            'migrateFacesInStore',
+            'addDefaultFacesToStore',
+            'fromSyncResetWithFaces',
+            'faceWithJSONObjectRepresentation',
+            'NTKDFaceStore',
+            'NTKDFaceLibrary',
+            'librarybroker',
+            'pairedsync.faces',
+            'replication.library.listener',
+            'isRestrictedForDevice',
+            'isAvailableForDevice',
+            'FaceSupport',
+            'reconcile',
+            'authorized',
+            'entitlement',
+          ]
+          for inp, dst in [
+            ('all-objc-metadata.tmp', 'relevant-objc-metadata.txt'),
+            ('all-symbols.tmp', 'relevant-symbols.txt')
+          ]:
+            p = out / inp
+            if not p.exists(): continue
+            lines = p.read_text(errors='replace').splitlines()
+            matches = [i for i,line in enumerate(lines)
+                       if any(t.lower() in line.lower() for t in terms)]
+            seen = set()
+            with (out / dst).open('w') as o:
+              o.write(f'source_lines={len(lines)} matching_lines={len(matches)}\n')
+              for i in matches[:350]:
+                for j in range(max(0,i-6), min(len(lines),i+12)):
+                  if j in seen: continue
+                  seen.add(j)
+                  o.write(f'{j+1}: {lines[j]}\n')
+                o.write('\n')
+          p=out / 'all-disassembly.tmp'
+          if not p.exists(): exit()
+          lines=p.read_text(errors='replace').splitlines()
+          matches=[i for i,line in enumerate(lines)
+                   if any(t.lower() in line.lower() for t in terms[:9])]
+          with (out/'relevant-disassembly.txt').open('w') as o:
+            o.write(f'total_lines={len(lines)} matching_labels={len(matches)}\n')
+            for i in matches[:120]:
+              o.write('\n===== METHOD/REFERENCE =====\n')
+              o.write('\n'.join(f'{j+1}: {lines[j]}' for j in range(max(0,i-6), min(len(lines),i+95)))+'\n')
+          with (out/'disassembly-metadata.txt').open('w') as o:
+            o.write(f'lines={len(lines)} bytes={p.stat().st_size}\n')
+            o.write(f'method_names={len(matches)}\n')
+          PY
+          rm -f analysis/all-objc-metadata.tmp analysis/all-symbols.tmp analysis/all-disassembly.tmp
+          exit 0
+
+      - name: Upload original-firmware disassembly results (not binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos23u95-native-face-library-daemon-control-flow
+          path: analysis/
+          retention-days: 14
+          if-no-files-found: error
