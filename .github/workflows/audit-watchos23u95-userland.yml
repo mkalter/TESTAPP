@@ -38,6 +38,31 @@ jobs:
           echo "URL $IPSW_URL" >> audit/provenance.txt
           echo 'Extracted via APFS HTTP ranges; full IPSW digest not verified' >> audit/provenance.txt
 
+      - name: Fetch current ipsw source (new APFS range implementation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-latest
+          (cd /tmp/ipsw-latest && git rev-parse HEAD) > audit/ipsw-source-commit.txt
+          grep 'go 1.27' /tmp/ipsw-latest/go.mod
+
+      - name: Install source-compatible Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-latest/go.mod
+          cache: false
+
+      - name: Build latest ipsw with sandbox support
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/ipsw-latest
+          go version
+          timeout 700 go build -tags sandbox -o /tmp/ipswcli/ipsw ./cmd/ipsw
+          /tmp/ipswcli/ipsw extract --help > "$GITHUB_WORKSPACE/audit/extract-help-current.txt" 2>&1
+          grep -F -- '--ranged' "$GITHUB_WORKSPACE/audit/extract-help-current.txt"
+          /tmp/ipswcli/ipsw version > "$GITHUB_WORKSPACE/audit/tool-version-current.txt" 2>&1
+
       - name: Extract MobileGestalt and ContainerManager executables and launch manifests
         shell: bash
         run: |
@@ -69,16 +94,7 @@ jobs:
               stat -c 'size=%s' "$f"
             } > "audit/metadata/$safe.txt"
             if [[ "$f" = *.plist ]]; then
-              python3 - "$f" <<'PY' > "audit/headers/$safe.txt" 2>&1
-              import sys,plistlib
-              try:
-               d=plistlib.load(open(sys.argv[1],"rb"))
-               print("format: plist")
-               if isinstance(d,dict):
-                for k in ("Label","Program","ProgramArguments","MachServices","KeepAlive","UserName","GroupName"):
-                 if k in d: print(k,":",d[k])
-              except Exception as e: print(type(e).__name__,e)
-              PY
+              python3 -c 'import sys,plistlib; d=plistlib.load(open(sys.argv[1],"rb")); print("format: plist"); [print(k, ":", d[k]) for k in ("Label","Program","ProgramArguments","MachServices","KeepAlive","UserName","GroupName") if isinstance(d,dict) and k in d]' "$f" > "audit/headers/$safe.txt" 2>&1
             else
               strings -a -n 6 "$f" | grep -Ei \
                 'MobileGestalt|rebuildCache|setCacheSentinel|MGRebuild|MGSetAnswer|MGCopyAnswer|CacheData|CacheExtra|container|sandbox|entitle|setCache|mach-lookup|XPC|system.group|read-write|file-issue' \
