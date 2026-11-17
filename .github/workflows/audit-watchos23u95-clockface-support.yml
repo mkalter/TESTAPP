@@ -1,0 +1,79 @@
+name: Audit original watchOS 23U95 ClockFace native support and storage
+
+on:
+  push:
+    branches:
+      - research/23u95-native-face-alternative-stores-20261117
+    paths:
+      - '.github/workflows/audit-watchos23u95-clockface-support.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clockface-storage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout modern remote APFS extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research-output raw /tmp/ipswcli
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          (cd /tmp/ipsw-src && git rev-parse HEAD) > research-output/ipsw-source-commit.txt
+      - name: Set up Go toolchain from ipsw source
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Compile ipsw
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 700 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw)
+          /tmp/ipswcli/ipsw version > research-output/ipsw-version.txt 2>&1
+      - name: Pull signed system face services and storage frameworks via Apple IPSW ranges
+        shell: bash
+        run: |
+          set +e
+          PATTERN='^/(System/Library/PrivateFrameworks/(ClockFaceSupport|CarouselServices|NanoTimeKit|NanoFaceGallery)\.framework/(ClockFaceSupport|CarouselServices|nanotimekitd|NanoFaceGallery)|System/Library/LaunchDaemons/com\.apple\.[^/]*(nanotimekit|ClockFace|clockface|carousel)[^/]*\.plist|System/Library/CoreServices/Carousel\.app/Carousel)$'
+          echo "$PATTERN" > research-output/source-pattern.txt
+          timeout 1000 /tmp/ipswcli/ipsw extract --remote --files --ranged --pattern "$PATTERN" --output "$PWD/raw" "$IPSW_URL" > research-output/extract.log 2>&1
+          echo "extract_exit=$?" > research-output/status.txt
+          find raw -type f -printf '%p %s bytes\\n' | sort > research-output/original-files.txt
+          tail -n 50 research-output/extract.log
+          exit 0
+      - name: Offline inspect entitlement/service names and native face store paths
+        shell: bash
+        run: |
+          set +e
+          mkdir -p research-output/metadata research-output/code-strings research-output/launchd
+          while IFS= read -r -d '' file; do
+            short="$(basename "$file")"
+            {
+              sha256sum "$file"
+              file "$file"
+              stat -c 'bytes=%s' "$file"
+            } > "research-output/metadata/$short.txt"
+            if [[ "$file" == *.plist ]]; then
+              python3 -c 'import sys,plistlib; d=plistlib.load(open(sys.argv[1],"rb")); print("label",d.get("Label")); print("program",d.get("Program",d.get("ProgramArguments"))); print("machServices",d.get("MachServices"))' "$file" > "research-output/launchd/$short.txt" 2>&1
+            else
+              strings -a -n 6 "$file" | grep -Ei                'NanoTimeKit|Faces|FaceSupport|FaceBundle|FaceLibrary|collectionType|deviceBrand|isRestrictedForDevice|isAvailableForDevice|deviceCategory|Carousel|AppGroup|SystemGroup|container|Library/|Private.*storage|permission|sandbox|entitle|authorization|CLKWatchFace|read.write|plis[t]|db$|sqlite|xpc'                  | head -n 600 > "research-output/code-strings/$short.txt" || true
+            fi
+          done < <(find raw -type f -print0)
+          echo 'User data not present; no on-device writes or unsigned code execution' > research-output/scope.txt
+          echo 'Extracted only selected APFS segments from original Apple IPSW: full archive SHA not checked' >> research-output/scope.txt
+          exit 0
+      - name: Publish static evidence, exclude copyrighted binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genuine-watch6-18-23u95-clockface-storage-and-support-audit
+          path: research-output/
+          retention-days: 14
+          if-no-files-found: error
