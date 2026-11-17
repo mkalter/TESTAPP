@@ -1,0 +1,127 @@
+name: Inspect 23U95 ContainerManager frameworks in dyld cache
+
+on:
+  push:
+    branches:
+      - research/watchos23u95-userland-services-20261117
+    paths:
+      - '.github/workflows/audit-watchos23u95-dyld.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-frameworks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Clone ipsw source for APFS remote byte-range support
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report extracted extracted-frameworks /tmp/ipswcli
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          (cd /tmp/ipsw-source && git rev-parse HEAD) > report/ipsw-source-revision.txt
+
+      - name: Install Go toolchain matching source
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+
+      - name: Build ipsw command
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/ipsw-source
+          timeout 700 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw
+          /tmp/ipswcli/ipsw extract --help > "$GITHUB_WORKSPACE/report/ipsw-extract-help.txt" 2>&1
+          /tmp/ipswcli/ipsw dyld extract --help > "$GITHUB_WORKSPACE/report/ipsw-dyld-extract-help.txt" 2>&1
+          grep -F -- '--ranged' "$GITHUB_WORKSPACE/report/ipsw-extract-help.txt"
+
+      - name: Extract only watchOS ARM64_32 dyld shared cache segments via HTTP ranges
+        shell: bash
+        run: |
+          set +e
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32.*$'
+          echo "$PATTERN" > report/dyld-path-pattern.txt
+          timeout 1250 /tmp/ipswcli/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+            > report/dyld-ranged-extract.log 2>&1
+          echo "extract_exit=$?" > report/status.txt
+          find extracted -type f -printf '%p %s bytes\n' | sort > report/cache-segment-list.txt
+          tail -n 70 report/dyld-ranged-extract.log
+          exit 0
+
+      - name: Extract three ContainerManager frameworks and MobileGestalt from dyld
+        shell: bash
+        run: |
+          set +e
+          CACHE="$(find extracted -type f -name 'dyld_shared_cache_arm64_32' | head -1)"
+          if [[ -z "$CACHE" ]]; then
+            echo 'BLOCKED: physical ARM64_32 dyld cache not extracted' > report/BLOCKED.txt
+            exit 0
+          fi
+          sha256sum "$CACHE" > report/dyld-cache-sha256.txt
+          file "$CACHE" >> report/dyld-cache-sha256.txt
+          timeout 120 /tmp/ipswcli/ipsw dyld info "$CACHE" \
+            > report/cache-info.txt 2>&1
+          echo "dyld_info_exit=$?" >> report/status.txt
+          timeout 180 /tmp/ipswcli/ipsw dyld image "$CACHE" \
+            > report/cache-image-list.txt 2>&1
+          echo "image_list_exit=$?" >> report/status.txt
+          grep -Ei 'ContainerManager|MobileGestalt' report/cache-image-list.txt \
+            > report/relevant-image-names.txt || true
+
+          for target in \
+            /System/Library/PrivateFrameworks/ContainerManagerCommon.framework/ContainerManagerCommon \
+            /System/Library/PrivateFrameworks/ContainerManagerSystem.framework/ContainerManagerSystem \
+            /System/Library/PrivateFrameworks/ContainerManagerUser.framework/ContainerManagerUser \
+            /usr/lib/libMobileGestalt.dylib; do
+            label="$(basename "$target")"
+            timeout 210 /tmp/ipswcli/ipsw dyld extract "$CACHE" "$target" \
+              -o "$PWD/extracted-frameworks" > "report/extract-$label.log" 2>&1
+            echo "$label-extract_exit=$?" >> report/status.txt
+          done
+          find extracted-frameworks -type f -printf '%p %s bytes\n' | sort > report/framework-files.txt
+
+          mkdir -p report/frameworks
+          while IFS= read -r -d '' f; do
+            safe="$(basename "$f" | tr ' ' '_')"
+            {
+              echo "binary=$f"
+              sha256sum "$f"
+              file "$f"
+            } > "report/frameworks/$safe.meta.txt"
+            strings -a -n 8 "$f" | grep -Ei \
+              'file-issue-extension|sandbox_extension|sandbox.*token|system.group|MCMXPC|MCMFileManager|grant.*extension|group.*identifiers|container.*query|partDomain|setCache|rebuildCache|MobileGestaltCache|MGSetAnswer|MGRebuild|entitlement|read.write|file-write' \
+              | head -n 250 > "report/frameworks/$safe.strings.txt" || true
+            timeout 40 /tmp/ipswcli/ipsw macho info "$f" \
+              > "report/frameworks/$safe.macho.txt" 2>&1
+          done < <(find extracted-frameworks -type f -print0)
+          exit 0
+
+      - name: Publish only analysis output, no Apple binaries
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          find report -type f -printf '%p %s bytes\n' | sort > report/manifest.txt
+          printf 'Watch6,18 23U95 Apple original, remote APFS ranges, raw binaries excluded\n' > report/provenance.txt
+          printf 'Full IPSW digest not verified; verify each stage exit code; runtime permission not proven\n' >> report/provenance.txt
+          tail -n 50 report/dyld-ranged-extract.log || true
+
+      - name: Upload private-framework binary metadata and research notes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos23u95-containermanager-dyld-analysis
+          path: report/
+          retention-days: 14
+          if-no-files-found: error
