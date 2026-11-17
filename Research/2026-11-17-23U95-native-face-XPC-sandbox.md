@@ -49,3 +49,46 @@ Separately, `_removeUnavailableFacesFromStore:` uses `_NTKFaceStyleIsAvailable` 
 The only genuine goal is the stock watchOS **original native Hermès face in Apple's Carousel and Face Gallery** after quitting HermesEnabler and rebooting the Watch. No present result meets it.
 
 No `bad_query` Class7/Class13 access to an authoritative native gallery store and no MobileGestalt write has been established. Treat any `NSXPCConnection` or sandbox query result as a *diagnostic* until an exact authorized client/server contract and actual device-state change are demonstrated.
+
+## 4. Validation and store-reset selectors — independently resolved
+
+[Run #44135356997](https://github.com/mkalter/TESTAPP/actions/runs/44135356997), artifact `watchos23u95-native-face-library-daemon-control-flow`, contains SHA-verified `verified-store-objc-selector-stubs.txt`. Each selector was decoded from the *actual* original `__objc_stubs` instructions, the `__objc_selrefs` and `__objc_methname`; no guessed symbol labels were substituted.
+
+### `NTKDSyncController._queue_validateLibraryFaces` block at 0x2E100
+
+- `0x6D2E0`: `_queue_checkoutLibraryStoreForDeviceUUID:`
+- `0x6F840`: `flushAndComputeValidationHashWithObserverCallback:`
+- `0x721E0`: `sharedInstance`
+- `0x70EE0`: `relinquishStore:`
+
+**Corrected interpretation:** despite its method name, this specific block checks out the native library store, computes/flushed its **validation hash**, and relinquishes the store. The block does **not** visibly call `_NTKCanAddWatchFace`, `isRestrictedForDevice:` or a Hermès entitlement setter. This does not prove none of the invoked methods have such checks internally.
+
+### `NTKDCollectionStore._queue_addFace:forUUID:`
+
+- `0x6F620`: `faceStyle`
+- `0x6E2C0`: `addUUID:withFaceStyle:`
+- `0x6F040`: `defaultManager`
+- `0x6EDE0`: `createDirectoryAtPath:withIntermediateDirectories:attributes:error:`
+- `0x71360`: `resourceDirectory`
+- `0x71C80`: `setObject:forKey:`
+- `0x71E60`: `setResourceDirectory:`
+
+**New precise observation:** native store insertion begins by recording UUID and face-style and creating associated resource storage. There is **no direct invocation of `_NTKCanAddWatchFace` in this observed method's immediate callsite**. This is a property of one internal store method, **not** an assurance that an unauthorized client can invoke it or that FaceBundleManager will render a restricted face.
+
+### `NTKDCollectionStore._resetWithFaces:orderedUUIDs:selectedUUID:` block at 0x3E0C4
+
+- `0x710A0`: `removeItemAtPath:error:`
+- `0x724E0`: `stringByAppendingPathComponent:`
+- `0x6EDE0`: `createDirectoryAtPath:withIntermediateDirectories:attributes:error:`
+- `0x70F60`: `removeAllUUIDs`
+- `0x6D8E0`: `_queue_setOrderedUUIDs:`
+- `0x6D900`: `_queue_setSelectedUUID:`
+- `0x6D7C0`: `_queue_reloadFullCollectionForObserver:completion:`
+
+This is a native **state replacement** routine with filesystem and collection mutations, not a simple flag override. Directly causing this from a sandboxed app is unproven, and misuse could replace the user's legitimate face library.
+
+### Updated decision
+
+The observable library-store methods do not all perform Hermès class validation at their own callsites, but the original `NTKFaceBundleManager` class lookup and `_NTKCanAddWatchFace` are independently present on the device. A bypass that only stores an arbitrary face record is **not** a native unlock.
+
+In the original `container.sb` on watchOS 23U95, the general allowed Mach names do not include `com.apple.nanofacegallery.librarybroker.server` or `com.apple.nanotimekit.replication.library.listener`. Until a permitted first-party intermediary and its caller contract are independently demonstrated, the XPC route is a **hypothesis only**. Do not manufacture test IPAs that call privileged store-reset methods.
