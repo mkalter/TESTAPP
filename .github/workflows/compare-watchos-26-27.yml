@@ -1,0 +1,113 @@
+name: Diff real watchOS 26 vs 27 SystemGroup sandbox on same hardware
+
+on:
+  push:
+    branches:
+      - research/real-23u95-firmware-sandbox-20261117
+    paths:
+      - '.github/workflows/compare-watchos-26-27.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  same-hardware-watch7-5-diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      URL26: https://updates.cdn-apple.com/2026SummerFCS/fullrestores/122-17334/1593CB6A-3FF0-4BD0-8C2D-B37A6164C78B/Watch7%2C5_26.6_23U67_Restore.ipsw
+      URL27: https://updates.cdn-apple.com/2026FallFCS/fullrestores/072-91688/0E703D1E-7453-4DD0-94FF-E83842DF7040/Watch7%2C5_27.0_24R364_Restore.ipsw
+      TOOL_URL: https://github.com/blacktop/ipsw/releases/download/v3.1.749/ipsw_3.1.749_linux_x86_64.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout existing sandbox comparator
+
+      - name: Install pinned ipsw
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tool
+          curl -fLsS --retry 4 --connect-timeout 25 "$TOOL_URL" -o /tmp/tool/tool.tar.gz
+          tar -xzf /tmp/tool/tool.tar.gz -C /tmp/tool
+          chmod +x /tmp/tool/ipsw
+          /tmp/tool/ipsw version
+
+      - name: Extract exact watchOS kernels from Apple CDN
+        shell: bash
+        run: |
+          set -u
+          mkdir -p firmware/old firmware/new comparison-out
+          echo 'Apple Watch Ultra 2 / Watch7,5 both images' > comparison-out/provenance.txt
+          echo "26 source: $URL26" >> comparison-out/provenance.txt
+          echo "27 source: $URL27" >> comparison-out/provenance.txt
+          echo 'Version: 26.6 (23U67) vs 27.0 (24R364)' >> comparison-out/provenance.txt
+          echo 'Remote range extraction; full IPSW SHA1 cannot be verified' >> comparison-out/provenance.txt
+
+          for v in old new; do
+            if [[ "$v" = old ]]; then url="$URL26"; else url="$URL27"; fi
+            echo "START $v $(date -u +%FT%TZ)" >> comparison-out/provenance.txt
+            timeout 1200 /tmp/tool/ipsw extract --kernel --remote --output "$PWD/firmware/$v" "$url" \
+              > "comparison-out/extract-$v.log" 2>&1
+            echo "$v-extract-exit=$?" >> comparison-out/status.txt
+            find "firmware/$v" -type f -printf '%p %s bytes\n' >> comparison-out/file-list.txt
+            echo "END $v $(date -u +%FT%TZ)" >> comparison-out/provenance.txt
+          done
+          exit 0
+
+      - name: Decompile and compare issuer and receiver rules
+        shell: bash
+        run: |
+          set +e
+          for v in old new; do
+            KC="$(find "firmware/$v" -type f -iname '*kernelcache*' | head -1)"
+            if [[ -z "$KC" ]]; then
+              echo "MISSING $v kernel" >> comparison-out/BLOCKED.txt
+              continue
+            fi
+            echo "$v: $KC" >> comparison-out/kernels.txt
+            sha256sum "$KC" >> comparison-out/kernels.txt
+            file "$KC" >> comparison-out/kernels.txt
+            for profile in containermanagerd baseline temporary-sandbox; do
+              timeout 130 /tmp/tool/ipsw sb dec "$KC" "$profile" \
+                -O "comparison-out/$v-$profile.sb" \
+                > "comparison-out/decompile-$v-$profile.log" 2>&1
+              echo "decompile-$v-$profile=$?" >> comparison-out/status.txt
+            done
+          done
+
+          for profile in containermanagerd baseline temporary-sandbox; do
+            if [[ -s comparison-out/old-$profile.sb && -s comparison-out/new-$profile.sb ]]; then
+              timeout 30 python3 Research/compare_systemgroup_policy.py \
+                "comparison-out/old-$profile.sb" "comparison-out/new-$profile.sb" \
+                > "comparison-out/parsed-diff-$profile.txt" 2>&1
+              echo "parsed-$profile=$?" >> comparison-out/status.txt
+              diff -u "comparison-out/old-$profile.sb" "comparison-out/new-$profile.sb" \
+                > "comparison-out/raw-diff-$profile.txt" || true
+            fi
+          done
+          exit 0
+
+      - name: Summary and artifact
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          find comparison-out -type f -printf '%p %s bytes\n' | sort > comparison-out/manifest.txt
+          {
+            echo '### Genuine Watch7,5 kernel comparison — watchOS 26.6 vs 27.0'
+            echo 'Two Apple CDN remote kernel extractions. The ZIP artifact includes SHA-256 checksums, independently decompiled containermanagerd, baseline and temporary-sandbox rules, and parsed diffs.'
+            echo 'Check status.txt and BLOCKED.txt before interpreting. No hardware touched.'
+            echo '\`\`\`'
+            cat comparison-out/status.txt
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload same-hardware sandbox diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch7-5-watchos26-vs27-real-policy-diff
+          path: comparison-out/
+          retention-days: 14
+          if-no-files-found: error
