@@ -68,13 +68,15 @@ jobs:
             } > "audit/binaries/$name.metadata.txt"
             strings -a -n 8 "$f" | grep -Ei 'NTKInternalBuild|NTKShowHardwareSpecificFaces|ShowInternalFaces|com.apple.NanoTimeKit.face|isRestrictedForDevice|deviceBrand|collectionType|FaceSupport|FaceBundles|DeviceCategory|_NTKCanAddWatchFace|Carousel|prefsd|AppleInternal|Hermes|Poodle' | head -n 250 > "audit/binaries/$name.relevant-strings.txt" || true
           done < <(find extracted -type f -print0)
-          NTK="$(find extracted -type f -name NanoTimeKit -print -quit)"
-          if [[ -n "$NTK" ]]; then
-            python3 Research/firmware-23u95/inspect_native_gates.py "$NTK" > audit/actual-23u95-native-gates-disassembly.txt 2>&1
-            echo "exact_native_gate_disassembly_exit=$?" >> audit/status.txt
-          else
-            echo 'BLOCKED: NanoTimeKit not extracted' > audit/BLOCKED.txt
-          fi
+          for component in NanoTimeKit NTKZeusFaceBundle NTKHermes2025FaceBundle; do
+            BINARY="$(find extracted -type f -name "$component" -print -quit)"
+            if [[ -n "$BINARY" ]]; then
+              python3 Research/firmware-23u95/inspect_native_gates.py "$BINARY" > "audit/${component}-disassembly.txt" 2>&1
+              echo "gate_disassembly_${component}_exit=$?" >> audit/status.txt
+            else
+              echo "NOT_EXTRACTED: $component (no disassembly attempted)" >> audit/status.txt
+            fi
+          done
           echo 'No live Watch used; no protected write; no permission bypass claimed' >> audit/provenance.txt
           exit 0
       - name: Upload audit logs and selected disassembly only
