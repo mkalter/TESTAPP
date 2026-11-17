@@ -167,6 +167,38 @@ static void UnmountOriginal(void) {
             Class faceClass = NSClassFromString(spec[@"face"]);
             BQFaceNote([NSString stringWithFormat:@"Expected face class loaded=%@",
                         faceClass ? @"YES" : @"NO"]);
+            if (index >= 3 && faceClass) {
+                // Native eligibility result on the *actual* Watch hardware.
+                // This read-only check helps distinguish missing bundles from
+                // an explicit device-category restriction.
+                SEL gate = NSSelectorFromString(@"isRestrictedForDevice:");
+                Method gateMethod = class_getClassMethod(faceClass, gate);
+                if (gateMethod && [faceClass respondsToSelector:gate]) {
+                    char *encoding = method_copyReturnType(gateMethod);
+                    BOOL validBOOL = encoding && (encoding[0] == 'B' || encoding[0] == 'c');
+                    if (encoding) free(encoding);
+                    if (validBOOL) {
+                        @try {
+                            BOOL restricted = ((BOOL(*)(id, SEL, id))objc_msgSend)(
+                                faceClass, gate, device);
+                            BQFaceNote([NSString stringWithFormat:@"Native isRestrictedForDevice=%@",
+                                        restricted ? @"YES" : @"NO"]);
+                        } @catch (NSException *gateException) {
+                            BQFaceNote([NSString stringWithFormat:@"Native restriction probe exception=%@",
+                                        gateException.name ?: @"unknown"]);
+                        }
+                    } else {
+                        BQFaceNote(@"Native restriction probe skipped (unrecognized return ABI)");
+                    }
+                } else {
+                    BQFaceNote(@"Native isRestrictedForDevice unavailable");
+                }
+                SEL capability = NSSelectorFromString(@"supportsFall2025FacesCapability");
+                if (Has(device, NSStringFromSelector(capability))) {
+                    BQFaceNote([NSString stringWithFormat:@"supportsFall2025FacesCapability=%@",
+                                GetUnsigned(device, NSStringFromSelector(capability)) ? @"YES" : @"NO"]);
+                }
+            }
             // A normal lookup can reject styles that are not exposed in the
             // ordinary gallery. Migration lookup is a supported private API
             // variant; it is worth trying for these three faces IN THIS APP.
