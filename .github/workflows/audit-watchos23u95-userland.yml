@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          PATTERN='^/(usr/libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd)|System/Library/LaunchDaemons/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib|System/Library/PrivateFrameworks/ContainerManager(Common|System|User)\.framework/(Versions/A/)?ContainerManager(Common|System|User)|System/Library/PrivateFrameworks/MobileContainerManager\.framework/(Versions/A/)?MobileContainerManager)
+          PATTERN='^/(usr/libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd)|System/Library/LaunchDaemons/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib|System/Library/PrivateFrameworks/ContainerManager(Common|System|User)\.framework/(Versions/A/)?ContainerManager(Common|System|User)|System/Library/PrivateFrameworks/MobileContainerManager\.framework/(Versions/A/)?MobileContainerManager)$'
           echo "$PATTERN" > audit/pattern.txt
           timeout 960 /tmp/ipswcli/ipsw extract --remote --files --ranged \
             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
