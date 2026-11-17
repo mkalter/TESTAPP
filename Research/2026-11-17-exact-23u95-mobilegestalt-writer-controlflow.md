@@ -100,3 +100,28 @@ This toggles a **local process variable**. It cannot add the Apple-private `com.
 - **Local cached answer wrapper `_MobileGestalt_get_deviceBrand`** calls `_MGCopyAnswer`, an entirely different layer from the provider. A changed answer in an app process does not necessarily alter the actual registry value or daemon cache.
 
 The next bounded offline probe examines `0x215C1138`, `0x215E1530`, and the alternate resolver branch `0x215B29A4`. No privileged APIs or protected writes were executed on a Watch.
+
+
+## Fourth exact disassembly: actual helper fallback is a no-op, not a writer
+
+[GitHub Actions run #44170278531](https://github.com/mkalter/TESTAPP/actions/runs/44170278531) succeeded. Artifact `14367922022` contains original-hash-verified disassembly at three additional addresses.
+
+**`0x215C1138`: concrete default target chosen by late-binding mode 2.**
+36 instructions, logs a diagnostic and returns `x0=0`:
+```asm
+0x215c1170 bl #0x215b5f44  ; __MGLog
+...
+0x215c11b4 mov x0, #0
+0x215c11c4 ret
+```
+No file write, plist serialization or caller-supplied replacement data was observed in that body. Thus **the default resolution of `__MGWriteCacheOnHelper` does not furnish a working cache writer**. A specially initialized system process could theoretically register a different callback; the normal Watch app's ability to do so has not been established.
+
+**`0x215B29A4`: alternate resolver branch.** It executes `bl 0x2160B688` and jumps back to `0x215B2918`, i.e. the same resolver path; it is not a distinct arbitrary-content implementation.
+
+**`0x215E1530`: internal writer prerequisite.** 48 instructions, invokes `0x27528F54` with a pointer and output status, evaluates `status | out` against zero and returns Boolean result, with debug/logging branches. The imported function at `0x27528F54` remains **unidentified** in this bounded audit. It is incorrect to assert this specifically is a sandbox entitlement check, or to assert it can be controlled by TESTAPP.
+
+These findings narrow two independent candidates and rule out the **default helper callback as an arbitrary MobileGestalt writer**. They do not prove no alternate privileged writer exists. The original file remains protected by the independently proven watchOS26 SystemGroup sandbox entitlement restriction.
+
+## Bottom-line decision
+
+A known and verified cache layout does not grant authorization to write it. All four original-firmware static runs were successful, no protected data was modified, and there is no confirmed native Hermès system-face unlock. Do not claim an authorized write based on `__MGSetServer`, a `CFPrefsZeroFile` empty-file creation, an MCM token, or the default `__MGWriteCacheOnHelper` thunk.
