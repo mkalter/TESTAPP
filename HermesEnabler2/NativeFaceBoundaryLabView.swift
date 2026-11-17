@@ -41,7 +41,6 @@ struct NativeFaceBoundaryLabView: View {
 
                 Text(report)
                     .font(.system(size: 10, design: .monospaced))
-                    .textSelection(.enabled)
             }
             .padding()
         }
