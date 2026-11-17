@@ -5,6 +5,7 @@ struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
     @State private var confirmMGSetter = false
+    @State private var confirmIOKitWriter = false
 
     var body: some View {
         ScrollView {
