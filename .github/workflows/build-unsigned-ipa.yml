@@ -17,6 +17,7 @@ on:
           - research/independent-mg-write-surfaces-20261117
           - fix/iokit-chosen-property-discovery-20261117
           - fix/native-hermes-23u95-cache-layout-20261117
+          - experiment/native-hermes-system-import-bypass-gates-20261117
           - main
   push:
     branches:
@@ -29,6 +30,7 @@ on:
       - research/independent-mg-write-surfaces-20261117
       - fix/iokit-chosen-property-discovery-20261117
       - fix/native-hermes-23u95-cache-layout-20261117
+      - experiment/native-hermes-system-import-bypass-gates-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
@@ -49,6 +51,9 @@ on:
       - 'HermesEnabler2/MGOffsets.plist'
       - 'HermesEnabler2/MGDefaults.plist'
       - 'HermesCompanion/ContentView.swift'
+      - 'HermesCompanion/NativeSystemFaceImportProbe.h'
+      - 'HermesCompanion/NativeSystemFaceImportProbe.m'
+      - 'HermesCompanion/Companion-Bridging-Header.h'
       - 'tests/test_ultra_layouts.py'
 
 permissions:

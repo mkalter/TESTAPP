@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var showingHistory = false
     @State private var showingImporter = false
     @State private var showingSystemFaceImporter = false
+    @State private var omitClientFaceValidation = false
+    @State private var latestNativeImportLog = ""
     @State private var shareURL: ShareItem?
     @State private var alertMessage = ""
     @State private var showingAlert = false
@@ -120,13 +122,35 @@ struct ContentView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Button {
+                    omitClientFaceValidation = false
                     showingSystemFaceImporter = true
                 } label: {
-                    Label("Importeer .watchface naar Apple Watch", systemImage: "square.and.arrow.down.on.square")
+                    Label("Normale systeemimport (controle)", systemImage: "checkmark.shield")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 5)
                 }
                 .buttonStyle(.bordered)
+                Button {
+                    omitClientFaceValidation = true
+                    showingSystemFaceImporter = true
+                } label: {
+                    Label("TEST: systeemimport zonder iPhone-voorcheck", systemImage: "applewatch.watchface")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                }
+                .buttonStyle(.borderedProminent)
+                Text("Gebruikt Apple's echte ClockKit-systeemimport, maar slaat de eerste clientvalidatie over. De Apple Watch kan Hermès alsnog weigeren. Alleen originele, vertrouwde .watchface-bestanden testen.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if !latestNativeImportLog.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = latestNativeImportLog
+                    } label: {
+                        Label("Kopieer laatste echte importresultaat", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.footnote)
+                }
             }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -248,25 +272,45 @@ struct ContentView: View {
                 return
             }
 
-            // This is Apple's first-party system face sharing API on the
-            // paired iPhone, not a NanoTimeKit preview or MobileGestalt edit.
-            CLKWatchFaceLibrary().addWatchFace(at: temporary) { error in
+            // Two real system import paths, both use Apple's ClockKit server.
+            // The experimental route omits only the early iPhone-side precheck.
+            // A callback without an error does not prove Watch installation.
+            let testNoClientCheck = omitClientFaceValidation
+            let finish: (Error?) -> Void = { error in
                 DispatchQueue.main.async {
                     try? FileManager.default.removeItem(at: temporary)
+                    let mode = testNoClientCheck
+                        ? "TEST ZONDER IPHONE-VOORCHECK"
+                        : "STANDAARD IMPORT"
+                    let status: String
                     if let error {
                         let nsError = error as NSError
-                        self.showMessage(
-                            "Apple heeft de systeemwijzerplaat geweigerd. " +
-                            "Domein: \(nsError.domain), code: \(nsError.code). " +
-                            nsError.localizedDescription +
-                            "\nEen beperkte Hermès-wijzerplaat kan door de modelcontrole worden afgewezen."
-                        )
+                        status = "result=DENIED domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
                     } else {
-                        self.showMessage(
-                            "De systeemimport is door Apple verwerkt. Controleer de wijzerplaten in de Watch-app en op je Apple Watch."
-                        )
+                        status = "result=NO_IMMEDIATE_ERROR (NOT proof of installation)"
                     }
+                    let log = """
+                    === Native Apple system ClockKit import ===
+                    datetime=\(Date().formatted(.iso8601))
+                    iOS=\(ProcessInfo.processInfo.operatingSystemVersionString)
+                    file=\(source.lastPathComponent)
+                    mode=\(mode)
+                    \(status)
+                    requires_actual_Apple_face_gallery_verification=YES
+                    protected_MobileGestalt_writes=NONE
+                    """
+                    latestNativeImportLog = log
+                    self.showMessage(log)
                 }
+            }
+
+            if testNoClientCheck {
+                NativeSystemFaceImportProbe.importFaceSkippingClientValidation(
+                    at: temporary,
+                    completion: finish
+                )
+            } else {
+                CLKWatchFaceLibrary().addWatchFace(at: temporary, completionHandler: finish)
             }
         }
     }
