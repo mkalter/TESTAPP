@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showingImporter = false
     @State private var showingSystemFaceImporter = false
     @State private var omitClientFaceValidation = false
+    @State private var latestNativeImportLog = ""
     @State private var shareURL: ShareItem?
     @State private var alertMessage = ""
     @State private var showingAlert = false
@@ -138,9 +139,18 @@ struct ContentView: View {
                         .padding(.vertical, 5)
                 }
                 .buttonStyle(.borderedProminent)
-                Text("Gebruikt dezelfde ClockKit-systeemimport, maar slaat de eerste clientvalidatie over. De Apple Watch controleert alsnog of de Hermès-wijzerplaat is toegestaan. Werkt alleen als de private API nog bestaat op deze iOS-versie.")
+                Text("Gebruikt Apple's echte ClockKit-systeemimport, maar slaat de eerste clientvalidatie over. De Apple Watch kan Hermès alsnog weigeren. Alleen originele, vertrouwde .watchface-bestanden testen.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                if !latestNativeImportLog.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = latestNativeImportLog
+                    } label: {
+                        Label("Kopieer laatste echte importresultaat", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.footnote)
+                }
             }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -272,20 +282,25 @@ struct ContentView: View {
                     let mode = testNoClientCheck
                         ? "TEST ZONDER IPHONE-VOORCHECK"
                         : "STANDAARD IMPORT"
+                    let status: String
                     if let error {
                         let nsError = error as NSError
-                        self.showMessage(
-                            "\(mode) geweigerd. Domein: \(nsError.domain), " +
-                            "code: \(nsError.code). \(nsError.localizedDescription)\n" +
-                            "Let op: alleen een systeemwijzerplaat die echt op de Watch verschijnt telt als succes."
-                        )
+                        status = "result=DENIED domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
                     } else {
-                        self.showMessage(
-                            "\(mode): Apple ClockKit meldde geen onmiddellijke fout. " +
-                            "Controleer of de Hermès-wijzerplaat werkelijk in Apple's wijzerplatenlijst " +
-                            "staat en blijft staan na het sluiten van HermesEnabler."
-                        )
+                        status = "result=NO_IMMEDIATE_ERROR (NOT proof of installation)"
                     }
+                    let log = """
+                    === Native Apple system ClockKit import ===
+                    datetime=\(Date().formatted(.iso8601))
+                    iOS=\(ProcessInfo.processInfo.operatingSystemVersionString)
+                    file=\(source.lastPathComponent)
+                    mode=\(mode)
+                    \(status)
+                    requires_actual_Apple_face_gallery_verification=YES
+                    protected_MobileGestalt_writes=NONE
+                    """
+                    latestNativeImportLog = log
+                    self.showMessage(log)
                 }
             }
 
