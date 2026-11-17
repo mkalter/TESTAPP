@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ClockKit
 
 // MARK: - Content View
 
@@ -10,6 +11,10 @@ struct ContentView: View {
 
     @State private var showingHistory = false
     @State private var showingImporter = false
+    @State private var showingFaceImporter = false
+    @State private var faceImportInProgress = false
+    @State private var faceImportOutcome = "Nog geen native import geprobeerd."
+    @State private var faceImportLogURL: URL?
     @State private var shareURL: ShareItem?
     @State private var alertMessage = ""
     @State private var showingAlert = false
@@ -84,6 +89,13 @@ struct ContentView: View {
         ) { result in
             handleImport(result)
         }
+        .fileImporter(
+            isPresented: $showingFaceImporter,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFaceImport(result)
+        }
         .alert("HermesEnabler", isPresented: $showingAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -103,6 +115,38 @@ struct ContentView: View {
     private var actionButtons: some View {
 
         VStack(spacing: 12) {
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Echte systeemimport · ClockKit")
+                    .font(.headline)
+                Text("Probeert een bestaande .watchface via Apple's officiële API aan de Watch-collectie toe te voegen. Geen preview of sandbox-test. Hermès wordt op niet-Hermès hardware doorgaans geweigerd.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    showingFaceImporter = true
+                } label: {
+                    Label(
+                        faceImportInProgress ? "ClockKit verwerkt verzoek…" : "Probeer wijzerplaat toe te voegen",
+                        systemImage: "applewatch.watchface"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(faceImportInProgress)
+
+                Text(faceImportOutcome)
+                    .font(.footnote)
+                    .textSelection(.enabled)
+                if let faceImportLogURL {
+                    Button {
+                        shareURL = ShareItem(url: faceImportLogURL)
+                    } label: {
+                        Label("Deel resultaatlog", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 showingImporter = true
@@ -192,6 +236,85 @@ struct ContentView: View {
                 String(localized: "Could not select the file:\n\(error.localizedDescription)")
             )
         }
+    }
+
+    // MARK: - Functional system-face import (iPhone)
+    //
+    // Unlike the Watch-side read-only lab, this sends a genuine add request
+    // to Apple's ClockKit system API. It does not bypass hardware eligibility.
+    // Only a user-selected .watchface file is used; protected paths are untouched.
+
+    private func handleFaceImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            recordFaceImport("Bestandskeuze mislukt: \(error.localizedDescription)", file: "(none)")
+        case .success(let urls):
+            guard let source = urls.first else {
+                recordFaceImport("Geen bestand gekozen.", file: "(none)")
+                return
+            }
+            guard source.pathExtension.lowercased() == "watchface" else {
+                recordFaceImport("Geen .watchface-bestand: \(source.lastPathComponent)", file: source.lastPathComponent)
+                return
+            }
+
+            let scoped = source.startAccessingSecurityScopedResource()
+            defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+            let local = FileManager.default.temporaryDirectory
+                .appendingPathComponent("native-face-\(UUID().uuidString).watchface")
+            do {
+                try FileManager.default.copyItem(at: source, to: local)
+            } catch {
+                recordFaceImport("Kan bestand niet lokaal kopiëren: \(error.localizedDescription)", file: source.lastPathComponent)
+                return
+            }
+
+            let filename = source.lastPathComponent
+            faceImportInProgress = true
+            faceImportOutcome = "ClockKit.addWatchFace(at:) aangeroepen voor \(filename)…"
+            CLKWatchFaceLibrary().addWatchFace(at: local) { error in
+                DispatchQueue.main.async {
+                    self.faceImportInProgress = false
+                    if let error {
+                        let nsError = error as NSError
+                        self.recordFaceImport(
+                            "AFGEWEZEN: \(error.localizedDescription)\nNSError domain=\(nsError.domain); code=\(nsError.code)",
+                            file: filename
+                        )
+                    } else {
+                        self.recordFaceImport(
+                            "AANVAARD: ClockKit heeft de toevoeging verwerkt. Controleer de Watch-app; dit bewijst niet dat de wijzerplaat al actief is.",
+                            file: filename
+                        )
+                    }
+                    try? FileManager.default.removeItem(at: local)
+                }
+            }
+        }
+    }
+
+    private func recordFaceImport(_ outcome: String, file: String) {
+        faceImportOutcome = outcome
+        let report = """
+        === Native Watch Face · functional system import ===
+        Time: \(ISO8601DateFormatter().string(from: Date()))
+        Host: iOS companion
+        API: CLKWatchFaceLibrary.addWatchFace(at:completionHandler:)
+        Source: \(file)
+        Result: \(outcome)
+
+        Note: hardware restrictions (including Hermès) remain enforced by Apple.
+        The operation modifies no MobileGestalt file or protected system store directly.
+        """
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("native-watchface-import-last-result.txt")
+        do {
+            try report.write(to: url, atomically: true, encoding: .utf8)
+            faceImportLogURL = url
+        } catch {
+            faceImportOutcome += "\nOpslaan log mislukt: \(error.localizedDescription)"
+        }
+        NSLog("[NativeFaceImport] %@", report)
     }
 
     // MARK: - Export
