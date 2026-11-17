@@ -1,0 +1,100 @@
+name: Build mightywhite HermesEnabler IPA (unsigned)
+
+on:
+  push:
+    branches: ['build/mightywhite-hermes-ipa']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    steps:
+      - name: Check out requested upstream source at pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: mightywhite/HermesEnabler
+          ref: c0ae1666cba67ab7fbae6d3e481cc2731f5550a1
+          path: source
+
+      - name: Show Xcode SDKs and source commit
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+          cd source
+          git rev-parse HEAD
+
+      - name: Adapt Xcode project format for hosted runner
+        run: |
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' source/HermesEnabler2.xcodeproj/project.pbxproj
+
+      - name: Build iPhone companion with embedded Watch application without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project source/HermesEnabler2.xcodeproj \
+            -scheme HermesCompanion \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build > build.log 2>&1 || {
+              tail -n 250 build.log
+              exit 1
+            }
+          tail -n 25 build.log
+
+      - name: Validate and package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/DerivedData/Build/Products/Release-iphoneos/HermesCompanion.app"
+          WATCH="$APP/Watch/HermesEnabler2.app"
+          test -d "$APP" || { echo "::error::iPhone application was not built"; exit 1; }
+          test -d "$WATCH" || { echo "::error::Watch application is not embedded"; exit 1; }
+          mkdir -p dist/staging/Payload
+          cp -R "$APP" dist/staging/Payload/
+          (cd dist/staging && zip -qry ../HermesEnabler-mightywhite-unsigned.ipa Payload)
+          unzip -l dist/HermesEnabler-mightywhite-unsigned.ipa | grep -m1 'Payload/HermesCompanion.app/Watch/HermesEnabler2.app/' 
+          echo "IPA includes the iPhone host and embedded Apple Watch app." >> "$GITHUB_STEP_SUMMARY"
+          echo "Unsigned; needs authorized signing before installation." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-mightywhite-unsigned-ipa
+          path: dist/HermesEnabler-mightywhite-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish direct download in GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="mightywhite-hermes-unsigned-20261117"
+          IPA="dist/HermesEnabler-mightywhite-unsigned.ipa"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$IPA" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "mightywhite HermesEnabler (unsigned iPhone + Watch IPA)" \
+              --notes "Compiled from mightywhite/HermesEnabler commit c0ae1666cba67ab7fbae6d3e481cc2731f5550a1. Unsigned build with an embedded Watch app. Requires authorized code signing. Not a signed or verified installable IPA." \
+              --prerelease
+          fi
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesEnabler-mightywhite-build-log
+          path: build.log
+          retention-days: 7
+          if-no-files-found: ignore
