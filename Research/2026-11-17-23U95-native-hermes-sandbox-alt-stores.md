@@ -118,3 +118,40 @@ A breakthrough must show all of:
 Legitimate further static analysis includes locating the precise paired-device/category capability provider used by native `CLKDevice` on 23U95, the 2025 face-class helper, and the live face gallery persistence location with read-only logs. None has been independently connected to a safe, effective writable Class7/Class13 target.
 
 **Verified outcome at this revision:** hard device-category/collection and internal-build gates; real native bundles and sandbox issuer rules extracted independently; **no successful MobileGestalt write, authorized alternate system store mutation, or native Hermès unlock**.
+
+
+## F. Original watchOS 23U95 face-library daemon — newly verified from Apple firmware
+
+A separate independent Apple-CDN partial-image extraction succeeded and is archived as [GitHub Actions #44113732424](https://github.com/mkalter/TESTAPP/actions/runs/44113732424), artifact `genuine-watch6-18-23u95-clockface-storage-and-support-audit` (the workflow status alone is not proof; extraction log shows 5 genuine files). The extraction used **124 HTTP range requests** and transferred **24,591,274 bytes** of the Watch6,18 / 23U95 IPSW. SHA-256 checksums and source paths are available for all original files in the artifact. The full 5 GB IPSW hash was not verified.
+
+The actual extracted watchOS processes/libraries are:
+
+| Original path / component | Size (bytes) | Distinguishing grounded evidence |
+| --- | ---: | --- |
+| `/System/Library/PrivateFrameworks/NanoTimeKit.framework/nanotimekitd` | 734,464 | Apple-signed native face-library/sync daemon; ObjC selectors for store maintenance and migration |
+| `/System/Library/PrivateFrameworks/NanoFaceGallery.framework/NanoFaceGallery` | 1,482,608 | Actual Swift `FaceLibraryManager`, `ForYouFacesManager`, `allFacesGallery` |
+| `/System/Library/CoreServices/Carousel.app/Carousel` | 185,312 | First-party watch UI and FaceSupport server entitlement |
+| `/System/Library/LaunchDaemons/com.apple.nanotimekitd.plist` | 2,194 | Original daemon launch/service manifest |
+| `/System/Library/LaunchDaemons/com.apple.carouselecomoded.plist` | 261 | Original Carousel companion service manifest |
+
+### Critical original daemon methods and persisted-state behavior
+
+The real `nanotimekitd` includes literal selector and diagnostics:
+
+- `_removeUnavailableFacesFromStore:` and log **`Removing unavailable faces`**
+- `_addDefaultFacesToStore:` and log **`Store is empty - adding default faces`**
+- `_migrateBundleFacesInStore:`, `_migrateFacesInStore:`, `_fromSyncResetWithFaces:orderedUUIDs:selectedUUID:`
+- `faceWithJSONObjectRepresentation:forDevice:forMigration:allowFallbackFromInvalidFaceStyle:`
+- `com.apple.pairedsync.faces`, `_NTKFacePreferencesFaceLibraryKey`, `_NTKFacePreferencesFaceLibraryVersionKey`
+
+**New evidence:** not only the gallery UI but the actual native **face-library daemon** has an explicit maintenance path for *removing unavailable faces*. Thus directly inserting an unsupported Hermès configuration into a library database/preference store (even if write access were obtained) has a separate lifecycle risk: the daemon can evaluate availability and remove it. A symbol/diagnostic name alone does **not** prove when or how often the removal method is invoked, or precisely which predicate it uses; disassembly/control flow would be required.
+
+The `nanotimekitd` binary's own entitlement text includes `com.apple.private.security.storage.NanoTimeKit.FaceSupport`, `com.apple.nanotimekit.replicator.library.entitlement`, home-relative read-write exception **`/Library/NanoTimeKit/`**, and shared-preference read-write `com.apple.NanoTimeKit.face`. These grants belong to Apple's daemon, **not** HermesEnabler. They show there is a privileged writer of the native library, but do not confer a writable Class7 AppGroup target or a caller-authorized arbitrary-face IPC.
+
+The original `Carousel` binary likewise embeds `com.apple.private.security.storage.NanoTimeKit.FaceSupport`, an exception for its home-relative `/Library/`, `com.apple.NanoTimeKit.face`, and several face-library/ClockKit XPC service names. `NanoFaceGallery` has a real `FaceLibraryManager` Swift type. All three are separate from the third-party app sandbox.
+
+### Result for a bad_query alternate-store theory
+
+**No evidence of a directly writable alternative store that switches Hermès on.** The native face-library state belongs to Apple daemons with private grants; `bad_query` Class7 can issue extensions for eligible AppGroup roots and Class13 for SystemGroup roots, but this does not grant the global per-user NanoTimeKit library. Even if a different primitive provided write access to the library, both the face-class checks and `_removeUnavailableFacesFromStore:` remain relevant.
+
+The next meaningful discriminator is a **read-only disassembly of `_removeUnavailableFacesFromStore:` and its caller(s)**, together with the `nanotimekitd` library sync validators. Until those are independently verified, do not create another IPA that edits unspecified `*.plist`/SQLite files or reports a fabricated Hermès unlock.
