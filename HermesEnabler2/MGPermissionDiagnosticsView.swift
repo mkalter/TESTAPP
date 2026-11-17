@@ -24,7 +24,8 @@ struct MGPermissionDiagnosticsView: View {
                         let class7 = BQRunClass7ControlMatrix() as String
                         let kamui = BQRunKAMUI26TokenProbe() as String
                         let extended = BQRunExtendedAuthorizationMatrix() as String
-                        let combined = [gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
+                        let verdict = MGDiagnosticVerdict.summarize(gates: gates, baseline: baseline)
+                        let combined = [verdict, gates, baseline, class7, kamui, extended].joined(separator: "\n\n")
                         _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
                             name: "complete-diagnostics.txt", text: combined
                         )
