@@ -54,7 +54,7 @@ def namedlist(vm):
     o=at(vm,8)
     if o is None:return []
     e=u32(o); count=u32(o+4)
-    item_size=(e&0xfffffff8) if e&0x80000000 else (e&0xffff)
+    item_size=e & 0xfffc
     # Relative entries use 3 signed int32 offsets; absolute entries 3 ptrs
     relative=bool(e&0x80000000)
     if item_size<12 or item_size>64 or count>5000:return []
