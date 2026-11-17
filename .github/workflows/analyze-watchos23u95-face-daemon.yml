@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd /tmp/ipsw-src && timeout 800 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
+          (cd /tmp/ipsw-src && GOMAXPROCS=2 GOFLAGS=-p=1 timeout 950 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
           command -v llvm-objdump
           llvm-objdump --version | head -3 > analysis/llvm-version.txt
           /tmp/ipsw-tool/ipsw version > analysis/ipsw-version.txt 2>&1
