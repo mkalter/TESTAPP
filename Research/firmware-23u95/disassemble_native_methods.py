@@ -38,3 +38,27 @@ for method in methods:
         n+=1
         if inst.mnemonic=="ret" and n>=12:break
     print("instructions_displayed",n)
+
+# Named methods are backed by verified relative Objective-C method entries.
+# These two non-method code blocks are referenced by *literal pointers* in
+# verified methods above, and are labelled accordingly rather than pretending
+# they are class methods. They are part of the same signed 23U95 executable.
+callbacks = [
+    (0x2E100, "_queue_validateLibraryFaces block capture (literal 0x2e100)"),
+    (0x3E0C4, "_resetWithFaces:orderedUUIDs:selectedUUID: block capture (literal 0x3e0c4)")
+]
+for va, label in callbacks:
+    if not start <= va < end:
+        raise SystemExit(f"Callback {label} outside validated __text")
+    off = int(text["offset"]) + (va - start)
+    raw = data[off:off + min(0x1800, end-va)]
+    instructions = list(cs.disasm(raw, va))
+    if not instructions: raise SystemExit(f"No decodable instructions at {hex(va)}")
+    print(f"\\n=== CALLBACK {label} @ {hex(va)} ===")
+    n = 0
+    for ins in instructions:
+        if n >= 400: break
+        print(f"{ins.address:#010x} {ins.mnemonic:8} {ins.op_str}")
+        n += 1
+        if ins.mnemonic == "ret" and n >= 12: break
+    print("instructions_displayed", n)
