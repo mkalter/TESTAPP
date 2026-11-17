@@ -67,7 +67,61 @@ jobs:
         shell: bash
         run: |
           set +e
-          PATTERN='^/(usr/libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd)|System/Library/LaunchDaemons/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib)$'
+          PATTERN='^/(usr/libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd)|System/Library/LaunchDaemons/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib|System/Library/PrivateFrameworks/ContainerManager(Common|System|User)\.framework/(Versions/A/)?ContainerManager(Common|System|User)|System/Library/PrivateFrameworks/MobileContainerManager\.framework/(Versions/A/)?MobileContainerManager)
+          echo "$PATTERN" > audit/pattern.txt
+          timeout 960 /tmp/ipswcli/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+            > audit/ranged-extract.log 2>&1
+          echo "$?" > audit/ranged-extract.exit
+          find extracted -type f -printf '%p %s bytes\n' | sort > audit/extracted-files.txt
+          tail -n 80 audit/ranged-extract.log
+          cat audit/extracted-files.txt
+          exit 0
+
+      - name: Examine system service binary metadata offline
+        shell: bash
+        run: |
+          set +e
+          mkdir -p audit/metadata audit/strings audit/headers
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            safe="$(printf '%s' "$f" | tr '/ ' '__')"
+            {
+              printf 'source=%s\n' "$f"
+              sha256sum "$f"
+              file "$f"
+              stat -c 'size=%s' "$f"
+            } > "audit/metadata/$safe.txt"
+            if [[ "$f" = *.plist ]]; then
+              python3 -c 'import sys,plistlib; d=plistlib.load(open(sys.argv[1],"rb")); print("format: plist"); [print(k, ":", d[k]) for k in ("Label","Program","ProgramArguments","MachServices","KeepAlive","UserName","GroupName") if isinstance(d,dict) and k in d]' "$f" > "audit/headers/$safe.txt" 2>&1
+            else
+              strings -a -n 6 "$f" | grep -Ei \
+                'MobileGestalt|rebuildCache|setCacheSentinel|MGRebuild|MGSetAnswer|MGCopyAnswer|CacheData|CacheExtra|container|sandbox|entitle|setCache|mach-lookup|XPC|system.group|read-write|file-issue' \
+                | head -n 250 > "audit/strings/$safe.txt" || true
+              timeout 60 /tmp/ipswcli/ipsw macho info "$f" \
+                > "audit/headers/$safe.macho.txt" 2>&1
+              echo "macho_exit=$?" >> "audit/metadata/$safe.txt"
+              timeout 60 /tmp/ipswcli/ipsw class-dump "$f" \
+                > "audit/headers/$safe.objc.txt" 2>&1
+              echo "classdump_exit=$?" >> "audit/metadata/$safe.txt"
+            fi
+          done < <(find extracted -type f -print0)
+          echo "FILES_ANALYZED=$count" | tee audit/status.txt
+          if [[ "$count" -eq 0 ]]; then
+            echo 'BLOCKED: no APFS files extracted. No independent userland inference.' >> audit/status.txt
+          fi
+          exit 0
+
+      - name: Archive only report files, never Apple binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos-23u95-userland-authority-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
+
           echo "$PATTERN" > audit/pattern.txt
           timeout 960 /tmp/ipswcli/ipsw extract --remote --files --ranged \
             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
