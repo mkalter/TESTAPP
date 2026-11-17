@@ -1,0 +1,88 @@
+name: Inspect exact 23U95 CoreFoundation cfprefsd preference authorizer
+
+on:
+  push:
+    branches:
+      - research/23u95-trusted-writer-cfprefsd-20261117
+    paths:
+      - '.github/workflows/inspect-23u95-corefoundation-preferences.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-exact-corefoundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare original source and bounded tools
+        run: |
+          set -euo pipefail
+          mkdir -p research-output extracted /tmp/ipsw-tool
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > research-output/ipsw-source-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build current APFS range extraction tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 750 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
+          /tmp/ipsw-tool/ipsw version > research-output/ipsw-version.txt 2>&1
+          /tmp/ipsw-tool/ipsw dyld extract --help > research-output/dyld-extract-help.txt 2>&1
+      - name: Extract exact watchOS 26 ARM64_32 dyld cache only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32(\.[^/]+)?$'
+          echo "$PATTERN" > research-output/dsc-path-pattern.txt
+          timeout 1000 /tmp/ipsw-tool/ipsw extract --remote --files --ranged \
+             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+             > research-output/dsc-extraction.log 2>&1 || true
+          find extracted -type f -printf '%p %s bytes\n' > research-output/dsc-file-list.txt
+          DSC="$(find extracted -type f -name 'dyld_shared_cache_arm64_32' | head -1)"
+          if [[ -z "$DSC" ]]; then
+            echo "EXACT_COREFOUNDATION_UNAVAILABLE: no ARM64_32 cache was found by this ranged pattern" | tee research-output/blocked.txt
+            tail -n 70 research-output/dsc-extraction.log
+            exit 2
+          fi
+          printf '%s\n' "$DSC" > research-output/dsc-path.txt
+          sha256sum "$DSC" > research-output/dsc-sha256.txt
+          file "$DSC" > research-output/dsc-type.txt
+      - name: Extract only matching CoreFoundation Mach-O and inspect preference implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          DSC="$(cat research-output/dsc-path.txt)"
+          mkdir -p corefoundation
+          timeout 240 /tmp/ipsw-tool/ipsw dyld extract "$DSC" CoreFoundation \
+            -o corefoundation > research-output/corefoundation-extract.log 2>&1
+          CORE="$(find corefoundation -type f -name 'CoreFoundation' | head -1)"
+          test -n "$CORE"
+          sha256sum "$CORE" > research-output/corefoundation-sha256.txt
+          file "$CORE" > research-output/corefoundation-type.txt
+          /tmp/ipsw-tool/ipsw macho info "$CORE" > research-output/corefoundation-macho-info.txt 2>&1 || true
+          strings -a -n 8 "$CORE" | grep -Ei 'CFPrefsDaemon|CFPrefsSource|CFPrefsPlistSource|CFXPreferencesDaemon|preferences.*path|audit.*token|entitlement|CFPrefsCreatePreferencesDirectory' \
+            | head -n 300 > research-output/corefoundation-relevant-strings.txt || true
+          timeout 170 /tmp/ipsw-tool/ipsw class-dump "$CORE" \
+            > research-output/corefoundation-objc-classdump.txt 2>&1 || true
+          grep -Ein -C 8 'CFPrefsDaemon|CFPrefsPlistSource|CFPrefsSource|CFPrefsConfiguration' \
+            research-output/corefoundation-objc-classdump.txt | head -n 300 \
+            > research-output/corefoundation-objc-context.txt || true
+          test -s research-output/corefoundation-sha256.txt
+          echo "SUCCESS: exact firmware CoreFoundation extracted; no on-watch code run" \
+            > research-output/result.txt
+      - name: Upload text provenance only, never Apple cache or libraries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos23u95-corefoundation-preferences-static-audit
+          path: research-output/
+          retention-days: 14
+          if-no-files-found: error
