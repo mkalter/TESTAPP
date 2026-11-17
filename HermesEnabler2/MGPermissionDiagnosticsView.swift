@@ -158,6 +158,22 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
+                Button("TEST: exacte geod-route (O_RDWR, geen wijzigingen)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunGeodExactReadWriteOpenTest() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "geod-exact-open-only.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 Button("Test path permissions (own files only)") {
                     guard !running else { return }
                     running = true
