@@ -1,13 +1,15 @@
-name: Inspect watchOS 23U95 MobileGestalt system services
+name: Inspect watchOS 23U95 trusted MobileGestalt and preference writers
 
 on:
   push:
     branches:
       - research/watchos23u95-userland-services-20261117
       - research/23u95-mobilegestalt-helper-abi-audit-20261117
+      - research/23u95-trusted-writer-cfprefsd-20261117
     paths:
       - '.github/workflows/audit-watchos23u95-userland.yml'
       - 'Research/firmware-23u95/audit_mobilegestalt_helper.py'
+      - 'Research/2026-11-17-trusted-writer-cfprefsd.md'
   workflow_dispatch:
 
 permissions:
@@ -65,11 +67,96 @@ jobs:
           grep -F -- '--ranged' "$GITHUB_WORKSPACE/audit/extract-help-current.txt"
           /tmp/ipswcli/ipsw version > "$GITHUB_WORKSPACE/audit/tool-version-current.txt" 2>&1
 
-      - name: Extract MobileGestalt and ContainerManager executables and launch manifests
+      - name: Extract MobileGestalt, ContainerManager and cfprefsd executables and launch manifests
         shell: bash
         run: |
           set +e
-          PATTERN='^/(usr/libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd)|System/Library/LaunchDaemons/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib|System/Library/PrivateFrameworks/ContainerManager(Common|System|User)\.framework/(Versions/A/)?ContainerManager(Common|System|User)|System/Library/PrivateFrameworks/MobileContainerManager\.framework/(Versions/A/)?MobileContainerManager)$'
+          PATTERN='^/(usr/(libexec/(MobileGestaltHelper|containermanagerd(_system)?|mobilegestaltd|cfprefsd)|sbin/cfprefsd)|System/Library/Launch(Daemons|Agents)/com\.apple\.[^/]*(MobileGestalt|mobilegestalt|containermanager|cfprefsd)[^/]*\.plist|usr/lib/system/libsystem_containermanager\.dylib|usr/lib/libMobileGestalt\.dylib|System/Library/PrivateFrameworks/ContainerManager(Common|System|User)\.framework/(Versions/A/)?ContainerManager(Common|System|User)|System/Library/PrivateFrameworks/MobileContainerManager\.framework/(Versions/A/)?MobileContainerManager)
+          echo "$PATTERN" > audit/pattern.txt
+          timeout 960 /tmp/ipswcli/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+            > audit/ranged-extract.log 2>&1
+          echo "$?" > audit/ranged-extract.exit
+          find extracted -type f -printf '%p %s bytes\n' | sort > audit/extracted-files.txt
+          tail -n 80 audit/ranged-extract.log
+          cat audit/extracted-files.txt
+          exit 0
+
+      - name: Examine system service binary metadata offline
+        shell: bash
+        run: |
+          set +e
+          mkdir -p audit/metadata audit/strings audit/headers
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            safe="$(printf '%s' "$f" | tr '/ ' '__')"
+            {
+              printf 'source=%s\n' "$f"
+              sha256sum "$f"
+              file "$f"
+              stat -c 'size=%s' "$f"
+            } > "audit/metadata/$safe.txt"
+            if [[ "$f" = *.plist ]]; then
+              python3 -c 'import sys,plistlib; d=plistlib.load(open(sys.argv[1],"rb")); print("format: plist"); [print(k, ":", d[k]) for k in ("Label","Program","ProgramArguments","MachServices","KeepAlive","UserName","GroupName") if isinstance(d,dict) and k in d]' "$f" > "audit/headers/$safe.txt" 2>&1
+            else
+              strings -a -n 6 "$f" | grep -Ei \
+                'MobileGestalt|rebuildCache|setCacheSentinel|MGRebuild|MGSetAnswer|MGCopyAnswer|CacheData|CacheExtra|container|sandbox|entitle|setCache|mach-lookup|XPC|system.group|read-write|file-issue|cfprefsd|preferences|audit.token|trusted.client|domain|application.id|user.id|path' \
+                | head -n 250 > "audit/strings/$safe.txt" || true
+              timeout 60 /tmp/ipswcli/ipsw macho info "$f" \
+                > "audit/headers/$safe.macho.txt" 2>&1
+              echo "macho_exit=$?" >> "audit/metadata/$safe.txt"
+              timeout 60 /tmp/ipswcli/ipsw class-dump "$f" \
+                > "audit/headers/$safe.objc.txt" 2>&1
+              echo "classdump_exit=$?" >> "audit/metadata/$safe.txt"
+            fi
+          done < <(find extracted -type f -print0)
+          echo "FILES_ANALYZED=$count" | tee audit/status.txt
+          if [[ "$count" -eq 0 ]]; then
+            echo 'BLOCKED: no APFS files extracted. No independent userland inference.' >> audit/status.txt
+          fi
+          exit 0
+
+      - name: Verify original MobileGestaltHelper ObjC method implementations
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(find extracted -type f -name MobileGestaltHelper | head -1)"
+          test -n "$FILE"
+          python3 -m venv /tmp/mgh-venv
+          /tmp/mgh-venv/bin/pip install -q capstone==5.0.6
+          /tmp/mgh-venv/bin/python \
+            Research/firmware-23u95/audit_mobilegestalt_helper.py \
+            "$FILE" audit
+          test -s audit/mgh-abi-report.json
+          test -s audit/mgh-abi-report.txt
+
+      - name: Audit exact 23U95 preference-writer provenance and service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Target: same-device privileged write, NOT a third-party token" > audit/cfprefsd-trust-boundary.txt
+          PREFS="$(find extracted -type f -name cfprefsd | head -1)"
+          if [[ -z "$PREFS" ]]; then
+            echo "No cfprefsd binary extracted: absent evidence, not evidence of absent service" | tee -a audit/cfprefsd-trust-boundary.txt
+            exit 2
+          fi
+          sha256sum "$PREFS" | tee -a audit/cfprefsd-trust-boundary.txt
+          file "$PREFS" | tee -a audit/cfprefsd-trust-boundary.txt
+          echo "Launch manifests for cfprefsd (when present):" | tee -a audit/cfprefsd-trust-boundary.txt
+          find audit/headers -type f -iname '*cfprefsd*' -print -exec cat {} \; | tee -a audit/cfprefsd-trust-boundary.txt
+          echo "Note: file-write* in daemon sandbox != arbitrary client-controlled path or data." | tee -a audit/cfprefsd-trust-boundary.txt
+          echo "No remote XPC request was sent and no protected file was touched." | tee -a audit/cfprefsd-trust-boundary.txt
+
+      - name: Archive only report files, never Apple binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos-23u95-userland-authority-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
+
           echo "$PATTERN" > audit/pattern.txt
           timeout 960 /tmp/ipswcli/ipsw extract --remote --files --ranged \
             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
