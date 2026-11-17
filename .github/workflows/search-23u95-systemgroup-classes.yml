@@ -1,0 +1,65 @@
+name: Search real 23U95 SystemGroup issuer and receiver classes
+
+on:
+  push:
+    branches:
+      - research/23u95-trusted-writer-cfprefsd-20261117
+    paths:
+      - '.github/workflows/search-23u95-systemgroup-classes.yml'
+      - 'Research/firmware-23u95/scan_systemgroup_authority.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  authority-class-search:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch original SHA-documented Apple kernel policy artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input/watch26 input/watch27 output
+          gh run download 44090713056 -R mkalter/TESTAPP -n real-watchos-23u95-sandbox-research -D input/watch26
+          gh run download 44091320529 -R mkalter/TESTAPP -n watch7-5-watchos26-vs27-real-policy-diff -D input/watch27
+          test -s input/watch26/commands/containermanagerd.sb
+          test -s input/watch26/commands/baseline.sb
+          test -s input/watch27/new-containermanagerd.sb
+          test -s input/watch27/new-baseline.sb
+          (cd input/watch26 && zip -qr ../../output/26.zip .)
+          (cd input/watch27 && zip -qr ../../output/27.zip .)
+          sha256sum output/*.zip > output/input-archive-hashes.txt
+      - name: Systematically check all explicit extension classes against exact MobileGestalt path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/scan_systemgroup_authority.py \
+            --watch26 output/26.zip --watch27 output/27.zip \
+            --output output/issuer-receiver-classes.json | tee output/result.txt
+          python3 - <<'PY'
+          import json
+          reports=json.load(open('output/issuer-receiver-classes.json'))
+          assert len(reports)==2
+          a,b=[{x['class']:x for x in r['classes']} for r in reports]
+          assert a['com.apple.sandbox.system-group']['explicit_target_issuer_match']
+          assert not a['com.apple.app-sandbox.read-write']['explicit_target_issuer_match']
+          assert b['com.apple.app-sandbox.read-write']['explicit_target_issuer_match']
+          print('PASS: 26/27 SystemGroup issuer difference confirmed by enumerated classes')
+          PY
+      - name: Export reproducible evidence without Apple kernel binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchos23u95-systemgroup-authorization-matrix
+          path: |
+            output/result.txt
+            output/issuer-receiver-classes.json
+            output/input-archive-hashes.txt
+          if-no-files-found: error
+          retention-days: 14
