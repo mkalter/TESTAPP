@@ -1,0 +1,97 @@
+name: Audit original 23U95 MobileGestalt cache writers
+
+on:
+  push:
+    branches:
+      - research/23u95-mobilegestalt-writer-symbols-20261117
+    paths:
+      - '.github/workflows/audit-23u95-mobilegestalt-writer.yml'
+      - 'Research/firmware-23u95/trace_mobilegestalt_authority.py'
+      - 'Research/firmware-23u95/trace_cfpreferences_authority.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-mobilegestalt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare original Apple extraction tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research-output extracted /tmp/ipsw-tool
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > research-output/ipsw-source-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build APFS/dyld range extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 750 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
+          /tmp/ipsw-tool/ipsw version > research-output/ipsw-version.txt 2>&1
+      - name: Acquire exact ARM64_32 dyld cache from 23U95 Apple firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32(\.[^/]+)?$'
+          echo "$PATTERN" > research-output/dsc-pattern.txt
+          for attempt in 1 2; do
+            timeout 1000 /tmp/ipsw-tool/ipsw extract --remote --files --ranged \
+              --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+              > "research-output/dsc-extraction-$attempt.log" 2>&1 && break
+            sleep 10
+          done
+          find extracted -type f -printf '%p %s bytes\n' > research-output/dsc-files.txt
+          DSC="$(find extracted -type f -name 'dyld_shared_cache_arm64_32' | head -1)"
+          if [[ -z "$DSC" ]]; then
+            echo 'BLOCKED: original cache not extracted, no negative writer conclusion' | tee research-output/blocked.txt
+            tail -n 30 research-output/dsc-extraction-*.log
+            exit 2
+          fi
+          printf '%s\n' "$DSC" > research-output/dsc-path.txt
+          sha256sum "$DSC" > research-output/dsc-sha256.txt
+      - name: Extract and pin Apple original libMobileGestalt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p original-mobilegestalt
+          timeout 240 /tmp/ipsw-tool/ipsw dyld extract \
+            "$(cat research-output/dsc-path.txt)" \
+            /usr/lib/libMobileGestalt.dylib \
+            -o original-mobilegestalt > research-output/mg-extraction.log 2>&1
+          MG="$(find original-mobilegestalt -type f -name libMobileGestalt.dylib | head -1)"
+          test -n "$MG"
+          echo "$MG" > research-output/mg-path.txt
+          sha256sum "$MG" > research-output/mg-sha256.txt
+          test "$(sha256sum "$MG" | cut -d' ' -f1)" = \
+            'a842db6add515926a9ef49da87bc7467974c8e8b52f7550e40f111c455c42bd0'
+          file "$MG" > research-output/mg-format.txt
+      - name: Verify genuine writer/cache symbols and direct call code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/mg-venv
+          /tmp/mg-venv/bin/python -m pip install -q capstone==5.0.6
+          /tmp/mg-venv/bin/python \
+            Research/firmware-23u95/trace_mobilegestalt_authority.py \
+            "$(cat research-output/mg-path.txt)" research-output \
+            | tee research-output/analysis-console.txt
+          test -s research-output/mobilegestalt-writer-analysis.json
+          test -s research-output/mobilegestalt-writer-analysis.txt
+      - name: Upload results and provenance only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-23u95-mobilegestalt-writer-code-audit
+          path: research-output/
+          retention-days: 14
+          if-no-files-found: error
