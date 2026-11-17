@@ -12,6 +12,15 @@
 static id sController;
 static id sRoot;
 static id sFace;
+static NSMutableArray<NSString *> *sFaceTrace;
+
+static void BQFaceNote(NSString *message) {
+    if (message.length) [sFaceTrace addObject:message];
+}
+static NSString *BQFaceOutcome(NSString *result) {
+    BQFaceNote([@"Result: " stringByAppendingString:result ?: @"(nil)"]);
+    return result;
+}
 
 static BOOL Has(id object, NSString *name) {
     return object && [object respondsToSelector:NSSelectorFromString(name)];
@@ -112,20 +121,29 @@ static void UnmountOriginal(void) {
     sFace = nil;
 }
 @implementation BQOriginalHermes
++ (NSString *)lastDiagnostics {
+    return sFaceTrace.count ? [sFaceTrace componentsJoinedByString:@"\n"] : @"No face load has been attempted";
+}
 + (NSString *)presentFaceAtIndex:(NSInteger)index {
     if (!NSThread.isMainThread) return @"Main thread required";
     NSArray *items = Styles();
     if (index < 0 || index >= (NSInteger)items.count) return @"Invalid Apple face selection";
+    sFaceTrace = [NSMutableArray arrayWithObjects:
+        @"=== Native Hermes FaceView diagnostics v2 ===",
+        [NSString stringWithFormat:@"Face: %@ (index %ld)", items[index][@"name"], (long)index],
+        [NSString stringWithFormat:@"OS: %@", NSProcessInfo.processInfo.operatingSystemVersionString],
+        @"Scope: app-local FaceView only. No MobileGestalt or ClockFace writes.",
+        nil];
     // 26.x is the known test family; any later generation needs fresh ABI tests.
     if (NSProcessInfo.processInfo.operatingSystemVersion.majorVersion != 26)
-        return @"This experimental native viewer is validated for watchOS 26 only";
-    if (!LoadOriginalFrameworks()) return @"Apple NanoTimeKit bundles unavailable";
+        return BQFaceOutcome(@"This experimental native viewer is validated for watchOS 26 only");
+    if (!LoadOriginalFrameworks()) return BQFaceOutcome(@"Apple NanoTimeKit bundles unavailable");
     NSDictionary *spec = items[index];
     id device = Get(NSClassFromString(@"CLKDevice"), @"currentDevice");
     id manager = Get(NSClassFromString(@"NTKFaceBundleManager"), @"sharedManager");
     if (!device || !manager || !Has(device, @"setCollectionType:") ||
         !Has(manager, @"faceBundleForBundleIdentifier:onDevice:forMigration:"))
-        return @"Original Apple FaceBundle API unavailable";
+        return BQFaceOutcome(@"Original Apple FaceBundle API unavailable");
 
     id face = nil;
     id controller = nil;
@@ -135,21 +153,61 @@ static void UnmountOriginal(void) {
     // Ultra devices may have a different original collection type than Series watches.
     // Snapshot selection is process-local; always restore the observed original.
     if (original == 0 || original > 32)
-        return [NSString stringWithFormat:@"Unsupported CLKDevice collectionType=%u", original];
+        return BQFaceOutcome([NSString stringWithFormat:@"Unsupported CLKDevice collectionType=%u", original]);
 
+    BQFaceNote([NSString stringWithFormat:@"CLKDevice: collectionType=%u, deviceCategory=%u",
+                original, GetUnsigned(device, @"deviceCategory")]);
     // The temporary flag affects only this app process. It is always restored;
-    // the system watch identity, MobileGestalt and ClockFace stay untouched.
+    // the actual device category, hardware identity and system clock are never changed.
     @try {
         SetUnsigned(device, @"setCollectionType:", 5);
-        if (GetUnsigned(device, @"collectionType") == 5) {
+        unsigned selected = GetUnsigned(device, @"collectionType");
+        BQFaceNote([NSString stringWithFormat:@"Temporary collectionType=%u", selected]);
+        if (selected == 5) {
+            Class faceClass = NSClassFromString(spec[@"face"]);
+            BQFaceNote([NSString stringWithFormat:@"Expected face class loaded=%@",
+                        faceClass ? @"YES" : @"NO"]);
+            // A normal lookup can reject styles that are not exposed in the
+            // ordinary gallery. Migration lookup is a supported private API
+            // variant; it is worth trying for these three faces IN THIS APP.
+            // It does not grant first-party face installation rights.
             id bundle = ((id(*)(id, SEL, id, id, BOOL))objc_msgSend)(
-                manager,
-                NSSelectorFromString(@"faceBundleForBundleIdentifier:onDevice:forMigration:"),
+                manager, NSSelectorFromString(@"faceBundleForBundleIdentifier:onDevice:forMigration:"),
                 spec[@"bundle"], device, NO);
-            if (Has(bundle, @"defaultFaceForDevice:"))
+            BQFaceNote([NSString stringWithFormat:@"FaceBundle regular lookup=%@",
+                        bundle ? NSStringFromClass([bundle class]) : @"NIL"]);
+            if (!bundle && index >= 3) {
+                bundle = ((id(*)(id, SEL, id, id, BOOL))objc_msgSend)(
+                    manager, NSSelectorFromString(@"faceBundleForBundleIdentifier:onDevice:forMigration:"),
+                    spec[@"bundle"], device, YES);
+                BQFaceNote([NSString stringWithFormat:@"FaceBundle migration lookup=%@",
+                            bundle ? NSStringFromClass([bundle class]) : @"NIL"]);
+            }
+            if (Has(bundle, @"defaultFaceForDevice:")) {
                 face = ((id(*)(id, SEL, id))objc_msgSend)(
                     bundle, NSSelectorFromString(@"defaultFaceForDevice:"), device);
-            Class faceClass = NSClassFromString(spec[@"face"]);
+            }
+            BQFaceNote([NSString stringWithFormat:@"Default face=%@",
+                        face ? NSStringFromClass([face class]) : @"NIL"]);
+
+            // Some bundles expose a gallery default even when the singular
+            // factory returned nil; accept ONLY the exact native face class.
+            if (!face && bundle && faceClass && index >= 3 && Has(bundle, @"galleryFacesForDevice:")) {
+                id gallery = ((id(*)(id, SEL, id))objc_msgSend)(
+                    bundle, NSSelectorFromString(@"galleryFacesForDevice:"), device);
+                if ([gallery isKindOfClass:NSArray.class]) {
+                    for (id candidate in gallery) {
+                        if ([candidate isKindOfClass:faceClass]) {
+                            face = candidate;
+                            break;
+                        }
+                    }
+                    BQFaceNote([NSString stringWithFormat:@"Gallery fallback candidates=%lu; match=%@",
+                                (unsigned long)[gallery count], face ? @"YES" : @"NO"]);
+                } else {
+                    BQFaceNote(@"Gallery fallback did not return an array");
+                }
+            }
             if (face && faceClass && [face isKindOfClass:faceClass]) {
                 id snapshotter = [NSClassFromString(@"NTKFaceSnapshotter") new];
                 id defaults = Get(NSClassFromString(@"NTKFaceSnapshotter"),
@@ -158,30 +216,50 @@ static void UnmountOriginal(void) {
                     ? [defaults mutableCopy] : [NSMutableDictionary new];
                 options[@"NTKSnapshotUseCanonicalContentKey"] = @NO;
                 options[@"NTKSnapshotIgnoreSnapshotImages"] = @YES;
-                if (Has(snapshotter, @"viewControllerForFace:withOptions:"))
+                if (Has(snapshotter, @"viewControllerForFace:withOptions:")) {
                     controller = ((id(*)(id, SEL, id, id))objc_msgSend)(
                         snapshotter, NSSelectorFromString(@"viewControllerForFace:withOptions:"),
                         face, options);
+                }
+                BQFaceNote([NSString stringWithFormat:@"Snapshot controller=%@",
+                            controller ? NSStringFromClass([controller class]) : @"NIL"]);
                 root = Get(controller, @"view");
                 nativeFaceView = Get(controller, @"faceView");
                 Class viewClass = NSClassFromString(spec[@"view"]);
+                BQFaceNote([NSString stringWithFormat:@"Native view=%@; expected view class available=%@",
+                            nativeFaceView ? NSStringFromClass([nativeFaceView class]) : @"NIL",
+                            viewClass ? @"YES" : @"NO"]);
                 if (!nativeFaceView || !viewClass ||
                     ![nativeFaceView isKindOfClass:viewClass]) {
+                    BQFaceNote(@"FAIL stage=native-view-class-check");
                     controller = nil;
                     root = nil;
                 }
+            } else if (!bundle) {
+                BQFaceNote(@"FAIL stage=face-bundle-lookup");
+            } else if (!face) {
+                BQFaceNote(@"FAIL stage=face-factory");
+            } else {
+                BQFaceNote([NSString stringWithFormat:@"FAIL stage=face-class-check; actual=%@",
+                            NSStringFromClass([face class])]);
             }
+        } else {
+            BQFaceNote(@"FAIL stage=temporary-collection-type");
         }
     } @catch (NSException *exception) {
+        BQFaceNote([NSString stringWithFormat:@"EXCEPTION stage=native-factory name=%@ reason=%@",
+                    exception.name ?: @"unknown", exception.reason ?: @"unknown"]);
         controller = nil;
         root = nil;
     } @finally {
         SetUnsigned(device, @"setCollectionType:", original);
+        BQFaceNote([NSString stringWithFormat:@"Restored collectionType=%u",
+                    GetUnsigned(device, @"collectionType")]);
     }
-    if (!controller || !root) return @"Genuine Apple FaceView unavailable (no replica)";
+    if (!controller || !root) return BQFaceOutcome(@"Genuine Apple FaceView unavailable (see trace: FaceBundle, face or view)");
     id host = AppHost();
     id hostView = Get(host, @"view");
-    if (!hostView) return @"Unable to locate the Watch app host controller";
+    if (!hostView) return BQFaceOutcome(@"Unable to locate the Watch app host controller");
     UnmountOriginal();
     CGRect rect = ((CGRect(*)(id, SEL))objc_msgSend)(hostView, NSSelectorFromString(@"bounds"));
     if (Has(root, @"setFrame:"))
@@ -215,14 +293,19 @@ static void UnmountOriginal(void) {
             ((void(*)(id, SEL, id))objc_msgSend)(
                 root, NSSelectorFromString(@"addGestureRecognizer:"), recognizer);
     }
+    // Some SceneEngine views attach their subview during first layout.
+    if (Has(hostView, @"layoutIfNeeded"))
+        ((void(*)(id, SEL))objc_msgSend)(hostView, NSSelectorFromString(@"layoutIfNeeded"));
+    BQFaceNote([NSString stringWithFormat:@"Native FaceView attached to window=%@",
+                Get(nativeFaceView, @"window") ? @"YES" : @"NO"]);
     // A factory returning an object is not proof that it reached the display.
     // Fail closed if Apple's native FaceView is not attached to a real window.
     if (!Get(nativeFaceView, @"window")) {
         UnmountOriginal();
-        return @"Genuine Apple FaceView was not attached to a window";
+        return BQFaceOutcome(@"Genuine Apple FaceView was not attached to a window");
     }
     // Do not claim this is an Apple system Face Gallery selection.
-    return @"native-face-mounted";
+    return BQFaceOutcome(@"native-face-mounted");
 }
 + (void)onOriginalLongPress:(id)gesture {
     if (GetUnsigned(gesture, @"state") != 1) return;
