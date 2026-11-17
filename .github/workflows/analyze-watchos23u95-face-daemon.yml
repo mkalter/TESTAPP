@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/analyze-watchos23u95-face-daemon.yml'
       - 'Research/firmware-23u95/objc_arm64_32_methods.py'
+      - 'Research/firmware-23u95/disassemble_native_methods.py'
       - 'Research/firmware-23u95/resolve_daemon_objc.py'
 
 permissions:
@@ -183,6 +184,20 @@ jobs:
                   else:f.write('\n'.join(content[i] for a,i in local[:180])+'\n')
           PY
           rm -f analysis/all-objc-metadata.tmp analysis/all-symbols.tmp analysis/all-disassembly.tmp
+          exit 0
+
+      - name: Disassemble validated native face-library purge and migration methods
+        shell: bash
+        run: |
+          set +e
+          python3 -m venv /tmp/capstone-venv
+          /tmp/capstone-venv/bin/python -m pip install -q capstone==5.0.6
+          FILE="$(cat analysis/daemon-path.txt)"
+          /tmp/capstone-venv/bin/python Research/firmware-23u95/disassemble_native_methods.py "$FILE" analysis \
+            > analysis/verified-native-methods-asm.txt 2> analysis/verified-native-methods-asm-error.txt
+          result=$?
+          echo "capstone_disassembly_exit=$result" >> analysis/status.txt
+          tail -n 55 analysis/verified-native-methods-asm.txt || true
           exit 0
 
       - name: Upload original-firmware disassembly results (not binaries)
