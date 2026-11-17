@@ -38,8 +38,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd /tmp/ipsw-src && GOMAXPROCS=2 GOFLAGS=-p=1 timeout 950 go build -o /tmp/ipsw-tool/ipsw ./cmd/ipsw)
-          command -v llvm-objdump
-          llvm-objdump --version | head -3 > analysis/llvm-version.txt
+          # Ubuntu 24.04 runners may only expose versioned LLVM tools.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends llvm-18 > analysis/llvm-install.txt
+          command -v llvm-objdump-18
+          llvm-objdump-18 --version | head -3 > analysis/llvm-version.txt
           /tmp/ipsw-tool/ipsw version > analysis/ipsw-version.txt 2>&1
 
       - name: Extract exact native watch face daemon from Apple's 23U95 firmware
@@ -67,13 +70,13 @@ jobs:
         run: |
           set +e
           FILE="$(cat analysis/daemon-path.txt)"
-          llvm-objdump --macho --objc-meta-data "$FILE" \
+          llvm-objdump-18 --macho --objc-meta-data "$FILE" \
             > analysis/all-objc-metadata.tmp 2> analysis/objc-metadata-error.txt
           echo "objc_metadata_exit=$?" > analysis/status.txt
-          llvm-objdump --macho --syms "$FILE" \
+          llvm-objdump-18 --macho --syms "$FILE" \
             > analysis/all-symbols.tmp 2> analysis/symbols-error.txt
           echo "symbols_exit=$?" >> analysis/status.txt
-          llvm-objdump --macho --disassemble "$FILE" \
+          llvm-objdump-18 --macho --disassemble "$FILE" \
             > analysis/all-disassembly.tmp 2> analysis/disassembly-error.txt
           echo "disassembly_exit=$?" >> analysis/status.txt
 
