@@ -10,6 +10,7 @@ on:
       - 'Research/firmware-23u95/objc_arm64_32_methods.py'
       - 'Research/firmware-23u95/disassemble_native_methods.py'
       - 'Research/firmware-23u95/resolve_daemon_objc.py'
+      - 'Research/firmware-23u95/resolve_daemon_stubs.py'
 
 permissions:
   contents: read
@@ -81,6 +82,17 @@ jobs:
             > analysis/objc32-method-map.txt 2> analysis/objc32-method-map-error.txt
           echo "objc32_method_map_exit=$?" > analysis/objc32-method-map-status.txt
           head -n 120 analysis/objc32-method-map.txt
+          exit 0
+
+      - name: Identify native face-library Objective-C call selectors
+        shell: bash
+        run: |
+          set +e
+          FILE="$(cat analysis/daemon-path.txt)"
+          python3 Research/firmware-23u95/resolve_daemon_stubs.py "$FILE" \
+            > analysis/verified-store-objc-selector-stubs.txt 2> analysis/verified-store-objc-selector-errors.txt
+          echo "stub_resolver_exit=$?" > analysis/stub-resolver-status.txt
+          cat analysis/verified-store-objc-selector-stubs.txt
           exit 0
 
       - name: Resolve Objective-C method metadata, symbols, and native control flow
