@@ -65,3 +65,38 @@ The previous direct protected MobileGestalt write on stock 23U95 still returns `
 
 Source conclusions are limited to this exact verified binary. A call to `_NTKFaceStyleIsAvailable` does not prove every validation call in the entire process uses the same predicate.
 
+
+## Native purge selectors fully resolved against original selector references
+
+**Evidence:** [successful GitHub run #44127029726](https://github.com/mkalter/TESTAPP/actions/runs/44127029726), artifact `watchos23u95-native-face-library-daemon-control-flow`, file `verified-store-objc-selector-stubs.txt`. The script `Research/firmware-23u95/resolve_daemon_stubs.py` resolves original watchOS ARM64_32 `__objc_stubs` instructions through `ADRP X1 / LDR W1` to their encoded `__objc_selrefs` entries and validates the destination in `__objc_methname` from the SHA-checked binary.
+
+| PC | Original selector or symbol |
+| --- | --- |
+| `0x70AA0` | `orderedUUIDs` |
+| `0x6F640` | `faceStyleForUUID:` |
+| `0x6EE60` | `currentDevice` |
+| `0x6BD70` | imported **`_NTKFaceStyleIsAvailable`** |
+| `0x71020` | `removeFaceForUUID:` |
+| `0x71CE0` | `setOrderedUUIDs:` |
+| `0x72720` | `synchronize` |
+| `0x6DB60` | `_resetWithFaces:orderedUUIDs:selectedUUID:` |
+
+### Verified high-level semantics
+
+For `_removeUnavailableFacesFromStore:` at `0x8134`, the 23U95 native code is equivalent at the observed inner branch to:
+
+```objc
+for (id uuid in [store orderedUUIDs]) {
+    NSInteger style = [store faceStyleForUUID:uuid];
+    if (!_NTKFaceStyleIsAvailable(style, [CLKDevice currentDevice])) {
+        [store removeFaceForUUID:uuid];
+    }
+}
+```
+
+This pseudocode describes the **specific directly validated loop**, not every implicit side effect or other face-library validation. In particular **the purge checks style availability, not the per-FaceBundle `isRestrictedForDevice:` selector at this callsite**.
+
+This is a new discriminator: a bundle FaceStyle record (often style `44`) might survive this particular purge even if the Hermès class is restricted. A stock watch's normal native gallery still explicitly consults `isRestrictedForDevice:` and `_NTKCanAddWatchFace`, and a write-authorized route into its `nanotimekitd` library remains unverified. No unlock claimed.
+
+The `_fromSyncResetWithFaces:orderedUUIDs:selectedUUID:` implementation is a thin forwarder to the private `_resetWithFaces:orderedUUIDs:selectedUUID:` selector, which is now a more precise target for a bounded authorization/validation audit before any claims about importing native faces through the paired sync channel.
+
