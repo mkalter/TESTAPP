@@ -18,7 +18,9 @@ KEYWORDS = ("removeUnavailableFacesFromStore", "migrateBundleFacesInStore",
             "migrateFacesInStore", "addDefaultFacesToStore",
             "fromSyncResetWithFaces", "faceWithJSONObjectRepresentation",
             "setFaceLibrary", "createFaceLibrary", "resetFaceLibrary",
-            "faceLibrary", "pairedsync", "librarybroker")
+            "faceLibrary", "pairedsync", "librarybroker",
+            "resetWithFaces", "faceStyleForUUID", "removeFaceForUUID",
+            "addFace", "faceForUUID", "setOrderedUUIDs", "synchronize")
 
 def u32(buf: bytes, off: int) -> int:
     return struct.unpack_from("<I", buf, off)[0]
