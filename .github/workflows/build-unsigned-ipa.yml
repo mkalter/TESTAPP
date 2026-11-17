@@ -31,6 +31,7 @@ on:
       - 'HermesEnabler2/ContentView.swift'
       - 'HermesEnabler2/BQOriginalHermes.h'
       - 'HermesEnabler2/BQPathAuthorizationDifferential.m'
+      - 'HermesEnabler2/BQMobileGestaltSetterProbe.m'
       - 'HermesEnabler2/BQOriginalHermes.m'
       - 'HermesEnabler2/OriginalHermesView.swift'
       - 'HermesEnabler2/WatchFacesView.swift'
