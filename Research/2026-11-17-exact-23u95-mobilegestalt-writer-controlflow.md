@@ -87,3 +87,16 @@ This toggles a **local process variable**. It cannot add the Apple-private `com.
 3. How is DeviceBrand's authoritative provider (`marketing-software-behavior` in earlier matching code) reconciled with an absent key on the physical Watch? A changed cache value could be regenerated from unmodified device data, and native Hermès still has independent availability gates.
 
 **No writable original MobileGestalt file descriptor, persistent patch or first-party Hermès gallery installation was demonstrated.**
+
+
+## Third exact disassembly: original internal gates and hardware provider
+
+[GitHub Actions #44169478892](https://github.com/mkalter/TESTAPP/actions/runs/44169478892) succeeded on the same SHA-pinned original. Artifact `14368120645` includes `mg-internal-call-targets.json` and text with disassembly.
+
+- **Writer precondition at `0x215E128C`** is a real 165-instruction routine. It twice invokes another Boolean-returning routine at **`0x215E1530`** and performs additional state checks and branch-dependent work. Its complete semantics were not yet established by these direct-call edges; calling it an entitlement check without evidence would be a mistake.
+- **Late-bound resolver at `0x215B28F0`** resolves `__MGWriteCacheOnHelper` to a function pointer. In an observed branch, mode `w1=2` selects **`0x215C1138`** via `csel` and stores that pointer in the function dispatch table. An alternate path begins at `0x215B29A4`; the first-return bounded disassembly did **not** include that alternate target. These are now explicit further code addresses, not an assumed full algorithm.
+- **Descriptor access at `0x215C10D0`** initializes an output count to `0x970` and returns a pointer to the fixed internal table. This does not accept user replacement cache bytes.
+- **Original `DeviceBrand` provider at `0x215CAAE0`** was disassembled: its data path reads the third byte (offset 2) of a CFData blob after checking length at least 4, retains values 1 or 2, and otherwise falls back to 0. This independently corroborates the earlier matching-watchOS research on `IODeviceTree:/chosen` `marketing-software-behavior`. The physical Watch previously did not expose that named property. It is a system-derived source, not a plist setter.
+- **Local cached answer wrapper `_MobileGestalt_get_deviceBrand`** calls `_MGCopyAnswer`, an entirely different layer from the provider. A changed answer in an app process does not necessarily alter the actual registry value or daemon cache.
+
+The next bounded offline probe examines `0x215C1138`, `0x215E1530`, and the alternate resolver branch `0x215B29A4`. No privileged APIs or protected writes were executed on a Watch.
