@@ -4,6 +4,18 @@
 <dict>
 	<key>Builds</key>
 	<dict>
+		<key>23U95</key>
+		<dict>
+			<key>HermesEnabledDeviceBrand</key>
+			<integer>1</integer>
+			<key>UltraEnabledScreenClass</key>
+			<integer>29</integer>
+			<key>UltraScreenClassOptions</key>
+			<array>
+				<integer>29</integer>
+				<integer>38</integer>
+			</array>
+		</dict>
 		<key>24R359</key>
 		<dict>
 			<key>MaxDeviceBrand</key>
