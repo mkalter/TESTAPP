@@ -78,8 +78,17 @@ def main(binary: str, output_dir: str):
         instructions = list(cs.disasm(data[off: off+length], pc))
         if not instructions:
             raise SystemExit(f"No real instructions at root {pc:#x}")
-        edges = []
+        # A fixed 0x580-byte window may span multiple adjacent IMPs.
+        # Stop at the first actual RET to avoid misattributing subsequent
+        # unrelated methods. This intentionally yields a lower-bound graph:
+        # early returns can hide alternate control-flow branches.
+        method_instructions = []
         for ins in instructions[:MAX_INSTRUCTIONS]:
+            method_instructions.append(ins)
+            if ins.mnemonic == "ret" and len(method_instructions) >= 12:
+                break
+        edges = []
+        for ins in method_instructions:
             if ins.mnemonic != "bl":
                 continue
             target = parse_target(ins.op_str)
@@ -107,8 +116,9 @@ def main(binary: str, output_dir: str):
         table.append({
             "root_pc": hex(pc),
             "root_name": root_name,
-            "bounded_bytes": length,
-            "instructions_decoded": min(len(instructions), MAX_INSTRUCTIONS),
+            "bounded_bytes": 4 * len(method_instructions),
+            "instructions_decoded": len(method_instructions),
+            "stopped_at_ret": method_instructions[-1].mnemonic == "ret",
             "direct_bl_edges": edges,
         })
 
@@ -117,13 +127,13 @@ def main(binary: str, output_dir: str):
     (dest / "native-callgraph-authorization.json").write_text(
         json.dumps({
             "source_sha256": digest,
-            "scope": "bounded direct-call edges only; no indirect block or XPC message semantics inferred",
+            "scope": "bounded direct-call edges through first RET only; alternate return paths or indirect blocks are NOT covered",
             "root_count": len(table),
             "roots": table
         }, indent=2) + "\n"
     )
     out = [f"original_daemon_sha256={digest}", f"roots={len(table)}"]
-    out.append("LIMITATION: this is a direct BL graph, not a complete authorization or XPC contract.")
+    out.append("LIMITATION: first-RET direct BL graph only; alternate branches and XPC authorization are not completely mapped.")
     for record in table:
         out.append(f"\n=== {record['root_name']} at {record['root_pc']} ===")
         for edge in record["direct_bl_edges"]:
