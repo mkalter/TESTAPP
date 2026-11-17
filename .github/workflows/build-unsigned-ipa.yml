@@ -14,6 +14,7 @@ on:
           - fix/hermes-ultra-three-faces-20261117
           - research/watchos26-write-path-differential-20261117
           - experiment/mgsetanswer-real-write-20261117
+          - research/independent-mg-write-surfaces-20261117
           - main
   push:
     branches:
@@ -23,6 +24,7 @@ on:
       - fix/hermes-ultra-three-faces-20261117
       - research/watchos26-write-path-differential-20261117
       - experiment/mgsetanswer-real-write-20261117
+      - research/independent-mg-write-surfaces-20261117
     paths:
       - '.github/workflows/build-unsigned-ipa.yml'
       - 'HermesEnabler2/BQEntitlementRuntime.m'
@@ -32,6 +34,7 @@ on:
       - 'HermesEnabler2/BQOriginalHermes.h'
       - 'HermesEnabler2/BQPathAuthorizationDifferential.m'
       - 'HermesEnabler2/BQMobileGestaltSetterProbe.m'
+      - 'HermesEnabler2/BQIODeviceTreeWriteProbe.m'
       - 'HermesEnabler2/BQOriginalHermes.m'
       - 'HermesEnabler2/OriginalHermesView.swift'
       - 'HermesEnabler2/WatchFacesView.swift'

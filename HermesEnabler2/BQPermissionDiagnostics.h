@@ -24,4 +24,6 @@ FOUNDATION_EXPORT NSString *BQRunPathAuthorizationDifferential(void);
 FOUNDATION_EXPORT NSString *BQRunMGSetAnswerWriteExperiment(void);
 /// Read-only persistence check after reopening Watch app.
 FOUNDATION_EXPORT NSString *BQCheckMGSetAnswerCanary(void);
+/// Real IOKit property set calls, using only the exact existing property bytes.
+FOUNDATION_EXPORT NSString *BQRunIODeviceTreeWriteProbe(void);
 NS_ASSUME_NONNULL_END

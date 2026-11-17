@@ -111,6 +111,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "path-authorization-differential.txt",
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
+            "iodevicetree-write-probe.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -156,6 +157,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "path-authorization-differential.txt",
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
+            "iodevicetree-write-probe.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

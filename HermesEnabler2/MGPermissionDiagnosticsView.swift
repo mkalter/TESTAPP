@@ -5,6 +5,7 @@ struct MGPermissionDiagnosticsView: View {
     @State private var report = "Run the test to distinguish App Group access, MobileGestalt reads and protected write authorization."
     @State private var running = false
     @State private var confirmMGSetter = false
+    @State private var confirmIOKitWriter = false
 
     var body: some View {
         ScrollView {
@@ -21,6 +22,18 @@ struct MGPermissionDiagnosticsView: View {
                 Text("Deze proef roept de echte private MGSetAnswer setter aan. Er wordt vooraf een back-up gemaakt. Dit is geen herhaling van de permissiematrix.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Text("ANDERE SCHRIJFROUTE · IOKit (3 methodes)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text("Test drie verschillende IOKit-setters op de originele IODeviceTree-data, zonder de waarde bewust te veranderen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("TEST: IODeviceTree setters (3 routes)") {
+                    confirmIOKitWriter = true
+                }
+                .disabled(running)
 
                 Button("TEST: MGSetAnswer schrijftest") {
                     confirmMGSetter = true
@@ -195,6 +208,29 @@ struct MGPermissionDiagnosticsView: View {
             .padding()
         }
         .navigationTitle("MG Diagnostics")
+        .confirmationDialog(
+            "Drie IOKit-schrijfproeven uitvoeren?",
+            isPresented: $confirmIOKitWriter,
+            titleVisibility: .visible
+        ) {
+            Button("Probeer drie IOKit-setters") {
+                guard !running else { return }
+                running = true
+                Task.detached(priority: .utility) {
+                    let output = BQRunIODeviceTreeWriteProbe() as String
+                    _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                        name: "iodevicetree-write-probe.txt", text: output
+                    )
+                    await MainActor.run {
+                        report = output
+                        running = false
+                    }
+                }
+            }
+            Button("Annuleren", role: .cancel) { }
+        } message: {
+            Text("Dit roept echte kernel/IOKit-schrijf-API’s aan met alleen de al bestaande waarde van marketing-software-behavior. Je Apple Watch kan ze weigeren. Alleen handmatig starten; geen wijziging van DeviceBrand gevraagd.")
+        }
         .confirmationDialog(
             "MGSetAnswer echt uitvoeren?",
             isPresented: $confirmMGSetter,
