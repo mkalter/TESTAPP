@@ -168,18 +168,19 @@ jobs:
           try: candidates=json.loads(pathlib.Path('analysis/validated-method-candidates.json').read_text())
           except (OSError,ValueError): candidates=[]
           content=src.read_text(errors='replace').splitlines()
+          (out.parent/'objdump-first-lines.txt').write_text('\\n'.join(content[:90]))
           entries=[]
           for i,line in enumerate(content):
-              match=re.match(r'^\\s*(?:0x)?([0-9a-fA-F]+):\\s',line)
+              match=re.match(r'^\s*(?:0x)?([0-9a-fA-F]+):\s',line)
               if match:entries.append((int(match.group(1),16),i))
           with out.open('w') as f:
-              f.write(f'validated_IMPs={len(candidates)} disassembly_instruction_lines={len(entries)}\\n')
+              f.write(f'validated_IMPs={len(candidates)} disassembly_instruction_lines={len(entries)}\n')
               for cand in candidates[:80]:
                   pc=int(cand['address'],16)
-                  f.write('\\n===== '+cand['method']+' IMP '+cand['address']+' '+cand['type']+' =====\\n')
+                  f.write('\n===== '+cand['method']+' IMP '+cand['address']+' '+cand['type']+' =====\n')
                   local=[(a,i) for a,i in entries if pc<=a<pc+0x300]
-                  if not local:f.write('No printable instructions in this address window\\n')
-                  else:f.write('\\n'.join(content[i] for a,i in local[:180])+'\\n')
+                  if not local:f.write('No printable instructions in this address window\n')
+                  else:f.write('\n'.join(content[i] for a,i in local[:180])+'\n')
           PY
           rm -f analysis/all-objc-metadata.tmp analysis/all-symbols.tmp analysis/all-disassembly.tmp
           exit 0
