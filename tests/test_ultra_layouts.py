@@ -8,6 +8,18 @@ with (root / "MGDefaults.plist").open("rb") as f:
     defaults = plistlib.load(f)["Builds"]
 
 assert offsets.keys() == defaults.keys()
+# Native Hermès system model toggle: guard the exact watchOS 26.6.1 / Watch6,18 schema.
+assert offsets["23U95"]["CacheUUID"] == "3BE19A76-F253-4CE4-AAC1-DF6D801CAAB1"
+assert offsets["23U95"]["CacheDataLength"] == 6309
+assert offsets["23U95"]["DeviceBrandOffset"] == 824
+assert offsets["23U95"]["DeviceBrandPresentOffset"] == 5711
+assert offsets["23U95"]["ScreenClassOffset"] == 3640
+assert offsets["23U95"]["ScreenClassPresentOffset"] == 6063
+assert offsets["23U95"]["PresenceBase"] == 5608
+assert offsets["23U95"]["RecoveryVerified"] is False
+assert defaults["23U95"]["HermesEnabledDeviceBrand"] == 1
+assert defaults["23U95"]["UltraScreenClassOptions"] == [29, 38]
+assert defaults["23U95"]["UltraEnabledScreenClass"] == 29
 for build, entry in defaults.items():
     options = entry.get("UltraScreenClassOptions")
     if options is None:
