@@ -30,6 +30,9 @@ SELECTORS = [
     "_MGWriteRebuildCacheSentinel", "__MGWriteRebuildCacheSentinel",
     "_MGRebuildCache4PurpleRestore", "__MGRebuildCache4PurpleRestore",
     "_MGSetAnswer", "__MGSetAnswer", "MGSetAnswer", "_MGSetServer",
+    "__MGSetServer", "__MGWriteCacheOnHelper", "_MGWriteCacheOnHelper",
+    "__MGCacheValid", "__MGCacheCopyValueForKey", "__MGClearInProcessCache",
+    "_MobileGestalt_get_deviceBrand",
 ]
 def audit(original_binary: str, output: str):
     raw = Path(original_binary).read_bytes()
