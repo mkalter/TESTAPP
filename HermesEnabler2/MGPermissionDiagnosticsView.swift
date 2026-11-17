@@ -30,7 +30,7 @@ struct MGPermissionDiagnosticsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button("TEST: IODeviceTree setters (3 routes)") {
+                Button("TEST: IORegistry property + 3 setters") {
                     confirmIOKitWriter = true
                 }
                 .disabled(running)
