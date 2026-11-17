@@ -29,7 +29,7 @@ struct OriginalHermesView: View {
                         ForEach(names.indices, id: \.self) { index in
                             Button(names[index]) {
                                 let result = BQOriginalHermes.presentFace(at: index) ?? "Original Apple FaceView unavailable"
-                                let diagnostic = "=== Original Hermès native viewer ===\nFace: \(names[index])\nwatchOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\nResult: \(result)\n\n" + BQOriginalHermes.lastDiagnostics()
+                                let diagnostic = "=== Original Hermès native viewer ===\nFace: \(names[index])\nwatchOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\nResult: \(result)\n\n" + (BQOriginalHermes.lastDiagnostics() ?? "Geen aanvullende diagnose")
                                 NSLog("[OriginalHermes] %@", diagnostic)
                                 _ = WatchConnectivityManager.shared.sendDiagnosticReport(
                                     name: "original-hermes-last-result.txt", text: diagnostic
