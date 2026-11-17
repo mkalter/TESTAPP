@@ -116,6 +116,22 @@ struct MGPermissionDiagnosticsView: View {
                 }
                 .disabled(running)
 
+                Button("Test path permissions (own files only)") {
+                    guard !running else { return }
+                    running = true
+                    Task.detached(priority: .utility) {
+                        let output = BQRunPathAuthorizationDifferential() as String
+                        _ = await WatchConnectivityManager.shared.sendDiagnosticReport(
+                            name: "path-authorization-differential.txt", text: output
+                        )
+                        await MainActor.run {
+                            report = output
+                            running = false
+                        }
+                    }
+                }
+                .disabled(running)
+
                 Button("Run write-authorization matrix") {
                     guard !running else { return }
                     running = true
