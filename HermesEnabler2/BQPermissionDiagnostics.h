@@ -26,4 +26,14 @@ FOUNDATION_EXPORT NSString *BQRunMGSetAnswerWriteExperiment(void);
 FOUNDATION_EXPORT NSString *BQCheckMGSetAnswerCanary(void);
 /// Real IOKit property set calls, using only the exact existing property bytes.
 FOUNDATION_EXPORT NSString *BQRunIODeviceTreeWriteProbe(void);
+
+//// Watch6,18 native FaceBundle / Carousel authorization lab (READ ONLY).
+/// T1: effective sandbox mach-lookup preflight for known Apple face services.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceMachPolicy(void);
+/// T2: bootstrap_look_up name resolution only; no XPC messages or method calls.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceBootstrapLookup(void);
+/// T3: filesystem existence and read-only access to native store candidates.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceStorePolicy(void);
+/// T4: on-watch inventory of signed Apple FaceBundle path candidates.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceBundleInventory(void);
 NS_ASSUME_NONNULL_END
