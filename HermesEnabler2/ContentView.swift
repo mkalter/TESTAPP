@@ -10,6 +10,13 @@ struct ContentView: View {
                 BackupView(model: model)
             } else {
                 List {
+                    Section("Hermès · in de app") {
+                        NavigationLink {
+                            OriginalHermesView()
+                        } label: {
+                            Label("Bekijk originele wijzerplaten", systemImage: "clock.fill")
+                        }
+                    }
                     Section("Features") {
                         NavigationLink { WatchFacesView(model: model) } label: {
                             Label("Watch Faces", systemImage: "clock")
