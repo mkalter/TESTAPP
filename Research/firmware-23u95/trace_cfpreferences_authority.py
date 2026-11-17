@@ -19,6 +19,13 @@ from resolve_daemon_objc import sections
 
 EXPECTED = "f08e572ddcdd26ce33704165a63992ce91fc57c4a90907432b15af7d373acb86"
 TARGET_NAMES = [
+    "__CFPrefsGetPathForManagedBundleID",
+    "__CFPrefsGetPathForTriplet",
+    "__CFPrefsCopyFixedUpContainerForMessage",
+    "__CFPrefsGetFixedUpDomainForMessage",
+    "__CFPrefsCopyFixedUpUserForMessage",
+    "__CFPrefsCopyEntitlementForMessage",
+    "__CFPrefsFixUpIncomingMessageForPIDImpersonationIfNeeded",
     "_CFPrefsImpersonateApplicationWithIdentifierAndAuditToken",
     "_CFPrefsGetEntitlementForMessageWithLockedContext",
     "__CFPreferencesWriteDomainDictionaryToPath",
