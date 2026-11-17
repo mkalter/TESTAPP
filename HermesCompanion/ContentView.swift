@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ClockKit
 
 // MARK: - Content View
 
@@ -10,6 +11,7 @@ struct ContentView: View {
 
     @State private var showingHistory = false
     @State private var showingImporter = false
+    @State private var showingSystemFaceImporter = false
     @State private var shareURL: ShareItem?
     @State private var alertMessage = ""
     @State private var showingAlert = false
@@ -84,6 +86,13 @@ struct ContentView: View {
         ) { result in
             handleImport(result)
         }
+        .fileImporter(
+            isPresented: $showingSystemFaceImporter,
+            allowedContentTypes: [UTType(filenameExtension: "watchface") ?? .data],
+            allowsMultipleSelection: false
+        ) { result in
+            handleSystemFaceImport(result)
+        }
         .alert("HermesEnabler", isPresented: $showingAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -103,6 +112,24 @@ struct ContentView: View {
     private var actionButtons: some View {
 
         VStack(spacing: 12) {
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Native systeemwijzerplaat", systemImage: "applewatch.watchface")
+                    .font(.headline)
+                Text("Importeer een originele gedeelde .watchface via Apple's ClockKit. Dit probeert de wijzerplaat aan het systeem toe te voegen, niet aan HermesEnabler. Een exclusieve Hermès-wijzerplaat kan alsnog door Apple worden geweigerd.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button {
+                    showingSystemFaceImporter = true
+                } label: {
+                    Label("Importeer .watchface naar Apple Watch", systemImage: "square.and.arrow.down.on.square")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
 
             Button {
                 showingImporter = true
@@ -191,6 +218,56 @@ struct ContentView: View {
             showMessage(
                 String(localized: "Could not select the file:\n\(error.localizedDescription)")
             )
+        }
+    }
+
+    // MARK: - Native Apple Watch system face import (not an in-app viewer)
+
+    private func handleSystemFaceImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            showMessage("Bestand kiezen mislukt: \(error.localizedDescription)")
+        case .success(let urls):
+            guard let source = urls.first,
+                  source.pathExtension.lowercased() == "watchface" else {
+                showMessage("Selecteer een geldig .watchface-bestand dat vanaf een Apple Watch is gedeeld.")
+                return
+            }
+            let accessed = source.startAccessingSecurityScopedResource()
+            defer {
+                if accessed { source.stopAccessingSecurityScopedResource() }
+            }
+
+            let temporary = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("watchface")
+            do {
+                try FileManager.default.copyItem(at: source, to: temporary)
+            } catch {
+                showMessage("Kon .watchface niet lokaal openen: \(error.localizedDescription)")
+                return
+            }
+
+            // This is Apple's first-party system face sharing API on the
+            // paired iPhone, not a NanoTimeKit preview or MobileGestalt edit.
+            CLKWatchFaceLibrary().addWatchFace(at: temporary) { error in
+                DispatchQueue.main.async {
+                    try? FileManager.default.removeItem(at: temporary)
+                    if let error {
+                        let nsError = error as NSError
+                        self.showMessage(
+                            "Apple heeft de systeemwijzerplaat geweigerd. " +
+                            "Domein: \(nsError.domain), code: \(nsError.code). " +
+                            nsError.localizedDescription +
+                            "\nEen beperkte Hermès-wijzerplaat kan door de modelcontrole worden afgewezen."
+                        )
+                    } else {
+                        self.showMessage(
+                            "De systeemimport is door Apple verwerkt. Controleer de wijzerplaten in de Watch-app en op je Apple Watch."
+                        )
+                    }
+                }
+            }
         }
     }
 
