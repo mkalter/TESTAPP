@@ -15,6 +15,7 @@ on:
           - research/watchos26-write-path-differential-20261117
           - experiment/mgsetanswer-real-write-20261117
           - research/independent-mg-write-surfaces-20261117
+          - fix/iokit-chosen-property-discovery-20261117
           - main
   push:
     branches:
