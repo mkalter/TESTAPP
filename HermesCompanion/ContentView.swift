@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import ClockKit
+import CryptoKit
 
 // MARK: - Content View
 
@@ -14,6 +15,8 @@ struct ContentView: View {
     @State private var showingSystemFaceImporter = false
     @State private var omitClientFaceValidation = false
     @State private var latestNativeImportLog = ""
+    @State private var latestNativeImportLogURL: URL?
+    @State private var savedNativeImportLogs: [URL] = []
     @State private var latestGeneratedHermesURL: URL?
     @State private var importingGeneratedHermes = false
     @State private var shareURL: ShareItem?
@@ -102,11 +105,15 @@ struct ContentView: View {
         } message: {
             Text(alertMessage)
         }
+        .onAppear {
+            refreshSavedFaceEvidence()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 watchManager.refreshConnectionStatus()
                 watchManager.loadBackupHistory()
                 watchManager.refreshDiagnosticLogs()
+                refreshSavedFaceEvidence()
             }
         }
     }
@@ -175,6 +182,28 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .font(.footnote)
+                }
+                if let latestNativeImportLogURL {
+                    Button {
+                        shareURL = ShareItem(url: latestNativeImportLogURL)
+                    } label: {
+                        Label("Deel laatste meetrapport", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if !savedNativeImportLogs.isEmpty {
+                    Text("Opgeslagen meetrapporten: \(savedNativeImportLogs.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(savedNativeImportLogs.prefix(6), id: \.self) { url in
+                        Button {
+                            shareURL = ShareItem(url: url)
+                        } label: {
+                            Label(url.lastPathComponent, systemImage: "doc.text")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             .padding(14)
@@ -311,8 +340,7 @@ struct ContentView: View {
                 verifyActualNativeWatchFaceGallery=YES
                 MobileGestaltWrites=NONE
                 """
-                latestNativeImportLog = log
-                showMessage(log)
+                persistFaceEvidence(log, input: url)
             }
         }
     }
@@ -344,11 +372,13 @@ struct ContentView: View {
 
             // Two real system import paths, both use Apple's ClockKit server.
             // The experimental route omits only the early iPhone-side precheck.
+            // Record the same input SHA for both routes to support direct comparison.
+            let sourceSHA256 = faceSHA256(temporary)
+            let runIdentifier = UUID().uuidString
             // A callback without an error does not prove Watch installation.
             let testNoClientCheck = omitClientFaceValidation
             let finish: (Error?) -> Void = { error in
                 DispatchQueue.main.async {
-                    try? FileManager.default.removeItem(at: temporary)
                     let mode = testNoClientCheck
                         ? "TEST ZONDER IPHONE-VOORCHECK"
                         : "STANDAARD IMPORT"
@@ -362,15 +392,18 @@ struct ContentView: View {
                     let log = """
                     === Native Apple system ClockKit import ===
                     datetime=\(Date().formatted(.iso8601))
+                    runID=\(runIdentifier)
                     iOS=\(ProcessInfo.processInfo.operatingSystemVersionString)
                     file=\(source.lastPathComponent)
+                    sha256=\(sourceSHA256)
+                    archive=USER_SELECTED
                     mode=\(mode)
                     \(status)
                     requires_actual_Apple_face_gallery_verification=YES
                     protected_MobileGestalt_writes=NONE
                     """
-                    latestNativeImportLog = log
-                    self.showMessage(log)
+                    self.persistFaceEvidence(log, input: temporary)
+                    try? FileManager.default.removeItem(at: temporary)
                 }
             }
 
@@ -382,6 +415,57 @@ struct ContentView: View {
             } else {
                 CLKWatchFaceLibrary().addWatchFace(at: temporary, completionHandler: finish)
             }
+        }
+    }
+
+    // MARK: - Durable evidence for multiple independent routes
+
+    private func faceSHA256(_ file: URL) -> String {
+        guard let data = try? Data(contentsOf: file) else { return "READ_FAILED" }
+        return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func evidenceDirectory() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("NativeFaceEvidence", isDirectory: true)
+    }
+
+    private func refreshSavedFaceEvidence() {
+        let directory = evidenceDirectory()
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        savedNativeImportLogs = files.filter { $0.pathExtension == "txt" }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+        latestNativeImportLogURL = savedNativeImportLogs.first
+    }
+
+    private func persistFaceEvidence(_ original: String, input: URL) {
+        let report = original + "\ninputSHA256=" + faceSHA256(input)
+            + "\nEvidence is a ClockKit callback, NOT verified first-party face persistence.\n"
+        latestNativeImportLog = report
+
+        let directory = evidenceDirectory()
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            let date = ISO8601DateFormatter().string(from: Date())
+                .replacingOccurrences(of: ":", with: "-")
+            let file = directory.appendingPathComponent(
+                "face-\(date)-\(UUID().uuidString).txt"
+            )
+            try report.write(to: file, atomically: true, encoding: .utf8)
+            refreshSavedFaceEvidence()
+            latestNativeImportLogURL = file
+            showMessage(report + "\nReport: " + file.lastPathComponent)
+        } catch {
+            showMessage(report + "\nEVIDENCE_SAVE_FAILED: \(error.localizedDescription)")
         }
     }
 
