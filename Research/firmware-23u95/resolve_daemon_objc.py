@@ -27,29 +27,39 @@ def i32(buf: bytes, off: int) -> int:
     return struct.unpack_from("<i", buf, off)[0]
 
 def sections(data: bytes):
-    if u32(data, 0) != 0xFEEDFACE:
-        raise ValueError("expected ARM64_32 Mach-O")
+    magic=u32(data,0)
+    if magic not in (0xFEEDFACE,0xFEEDFACF):
+        raise ValueError("expected little-endian thin Mach-O")
     if u32(data, 4) != 0x0200000c:
-        raise ValueError("wrong architecture")
+        raise ValueError("wrong architecture (ARM64_32 required)")
     ncmds = u32(data, 16)
-    off = 28
+    off = 32 if magic==0xFEEDFACF else 28
     result = []
     for _ in range(ncmds):
         cmd, size = struct.unpack_from("<II", data, off)
         if size < 8 or off + size > len(data):
             raise ValueError("invalid LC")
-        if cmd == 1:
+        if magic==0xFEEDFACE and cmd==1:
             nsects = u32(data, off+48)
-            if size < 56+68*nsects:
-                raise ValueError("invalid LC_SEGMENT")
+            if size < 56+68*nsects: raise ValueError("invalid LC_SEGMENT")
             for n in range(nsects):
-                tup=struct.unpack_from("<16s16s9I",data,off+56+n*68)
-                name=tup[0].split(b"\0",1)[0].decode("ascii","replace")
-                seg=tup[1].split(b"\0",1)[0].decode("ascii","replace")
-                addr, sz, fileoff=tup[2:5]
-                if fileoff < len(data) and sz and fileoff + sz <= len(data):
-                    result.append(dict(name=f"{seg},{name}", vm=addr,
-                                       size=sz, offset=fileoff))
+                loc=off+56+n*68
+                name=data[loc:loc+16].split(b"\0",1)[0].decode("ascii","replace")
+                seg=data[loc+16:loc+32].split(b"\0",1)[0].decode("ascii","replace")
+                addr,sz,fileoff=struct.unpack_from("<III",data,loc+32)
+                if sz and fileoff + sz <= len(data):
+                    result.append(dict(name=f"{seg},{name}",vm=addr,size=sz,offset=fileoff))
+        if magic==0xFEEDFACF and cmd==0x19:
+            nsects=u32(data,off+64)
+            if size < 72+80*nsects: raise ValueError("invalid LC_SEGMENT_64")
+            for n in range(nsects):
+                loc=off+72+n*80
+                name=data[loc:loc+16].split(b"\0",1)[0].decode("ascii","replace")
+                seg=data[loc+16:loc+32].split(b"\0",1)[0].decode("ascii","replace")
+                addr,sz=struct.unpack_from("<QQ",data,loc+32)
+                fileoff=u32(data,loc+48)
+                if sz and fileoff+sz <= len(data):
+                    result.append(dict(name=f"{seg},{name}",vm=addr,size=sz,offset=fileoff))
         off += size
     return result
 
