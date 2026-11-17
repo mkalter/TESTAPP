@@ -19,6 +19,11 @@ from resolve_daemon_objc import sections
 
 EXPECTED = "f08e572ddcdd26ce33704165a63992ce91fc57c4a90907432b15af7d373acb86"
 TARGET_NAMES = [
+    "__CFPreferencesSetValueWithContainer",
+    "__CFPreferencesSynchronizeWithContainer",
+    "-[CFPDSource acceptMessage:populatingReply:]",
+    "-[CFPDSource cacheFileInfoForWriting:euid:egid:didCreate:]",
+    "-[CFPDSource cleanUpIfNecessaryAfterCreatingPlist]",
     "__CFPrefsGetPathForManagedBundleID",
     "__CFPrefsGetPathForTriplet",
     "__CFPrefsCopyFixedUpContainerForMessage",
