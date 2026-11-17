@@ -27,7 +27,8 @@ FILES = {
  "NTKHermes2025FaceBundle": (
     "ca8f29bd478483d5bfcd6a30cae9f324a37e2655e0515a27929596df4dc9af49",
     {
-      "Hermes2025Face.isRestrictedForDevice": (0x3B2C, 85),
+      "Hermes2025Face.isRestrictedForDevice": (0x3B2C, 18),
+      "Hermes2025Face.restriction_helper": (0x46B8, 110),
     }
  ),
 }
