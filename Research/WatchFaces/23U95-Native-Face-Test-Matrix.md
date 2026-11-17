@@ -1,0 +1,60 @@
+# Native Hermès / Watch6,18 / watchOS 26.6.1 (23U95) — onderzoeks- en testmatrix
+
+**Exact einddoel:** de originele Apple Hermès-system FaceBundles verschijnen in de **Apple ClockFace/Carousel-galerij**, blijven daar wanneer HermesEnabler gesloten is en zijn selecteerbaar na een herstart. Noch een eigen SwiftUI FaceView, noch een `.watchface`-ZIP, noch een XPC-verbinding alleen is bewijs van succes.
+
+## 1. Wat het systeem echt doet (offline vastgesteld)
+
+Deze bewijsstappen komen uit de **originele Watch6,18/23U95** Apple-firmware, gevalideerde Mach-O SHA-256-checks en disassemblage in [PR #18](https://github.com/mkalter/TESTAPP/pull/18) en [PR #19](https://github.com/mkalter/TESTAPP/pull/19). Sommige aanvullende uitspraken over JSON/migratie zijn afgeleid uit afzonderlijk **iOS 26.1**-materiaal; die moeten op Watch 23U95 nog onafhankelijk worden bevestigd.
+
+1. **Aanwezigheid** — Zeus (`NTKPoodleFace`, Circulaire) en `NTKHermes2025FaceBundle` zijn onderdeel van de onderzochte originele firmware. Het zijn ondertekende systeemimplementaties en geen vrij bewerkbare appbestanden.
+2. **Gallerij-registratie** — `NTKFaceBundleManager.enumerateFaceBundlesOnDevice:` slaat FaceBundles over wanneer `faceClass.isRestrictedForDevice:` waar is. `NTKGalleryCollection` filtert hardware-specifieke bundles apart.
+3. **FaceBundle-resolutie** — bij reguliere bundle-ID-lookup wordt `isRestrictedForDevice:` opnieuw gecheckt. De enkele migratie/snapshot-uitzondering die in iOS 26.1 zichtbaar is, is **niet** hetzelfde als een recht om de Watch-galerij te wijzigen.
+4. **Opslaan** — op 23U95 bevat `NTKDCollectionStore._queue_addFace:forUUID:` de echte `addUUID:withFaceStyle:` plus resourceopslag. Deze specifieke functie roept `_NTKCanAddWatchFace` niet direct aan; dat zegt niets over haar aanroepers of de latere renderer.
+5. **Library cleanup** — op 23U95 controleert `_removeUnavailableFacesFromStore:` bij het onderzochte directe callsite `_NTKFaceStyleIsAvailable(style,device)` en verwijdert vervolgens met `removeFaceForUUID:`. Dit is **niet** de per-FaceBundle `isRestrictedForDevice:`-controle. Hypothese: een stijl-44-record zou deze ene cleanup kunnen overleven. Niet geverifieerd op een echte Watch.
+6. **Andere opslagcontrole** — `NTKDSyncController._queue_validateLibraryFaces` gebruikt `flushAndComputeValidationHashWithObserverCallback:`. Dit is niet hetzelfde als de add-availability predicate, en de hashfunctie kan zelf intern meer controleren.
+7. **Authorization** — Apple daemons bezitten aparte FaceSupport- en collection-entitlements. De gebruikelijke sandbox `mach-lookup` allowlist van 23U95 bevat wel `com.apple.ClockKit.CLKWatchFaceLibrary`, niet alle library- en replication-service-namen. Een XPC-listener die `YES` retourneert verleent geen clienttoegang.
+8. **Device gate** — gemeten Ultra 1: `deviceCategory=4`, `collectionType=9`, `NTKShowHardwareSpecificFaces=false`. De volledige oorspronkelijke Zeus Poodle-class functie geeft hiermee `restricted=true`. Schrijven naar een willekeurige plist verandert de Apple-ondertekende klasse niet.
+
+## 2. Concrete testen die nu in de Watch-app staan
+
+De nieuwe, **geïsoleerde** `Native Face Lab` is rechtstreeks vanuit de Watch UI bereikbaar, zelfs wanneer er nog geen MobileGestalt-back-up bestaat. Iedere test heeft een eigen knop, een apart log en overdracht naar **HermesEnabler → Watch Logs** op de iPhone. Er wordt niet naar Apple's systeembestanden geschreven en er worden geen XPC-methoden aangeroepen.
+
+| Test | Meet feitelijk | Positieve uitkomst bewijst | Betekenis bij blokkade |
+|---|---|---|---|
+| **T1 Mach-policy** | `sandbox_check(pid,"mach-lookup",GLOBAL_NAME=2,service)` voor ClockKit en exacte gallery-broker, collection, replication, relay, FaceSupport, Carousel en MG-diensten | Het **effectieve** sandboxbeleid van onze app is voor deze naam niet direct afwijzend | Zonder toegestane mach-lookup is direct benaderen van die service onaannemelijk |
+| **T2 Bootstrap-lookup** | Alleen `bootstrap_look_up` met eigen bootstrapport; verkregen poorten direct vrijgeven | De named Mach service kan vanuit onze app worden gevonden | Kan een namespace-, ontbrekende-service- of sandboxprobleem zijn; de numeric returncode onderscheidt die, niet alleen een preflight |
+| **T3 Store-/capability-locaties** | Alleen `lstat`, `open(O_RDONLY|O_NOFOLLOW)` en policycheck voor `NanoTimeKit`, `FaceSupport`, Preferences, `NanoRegistry`, `DeviceRegistry`, `pairedsync`, MG en eigen control | Concreet bestaand pad en echte **read** toegankelijkheid; write is uitsluitend *preflight* | Mogelijk verkeerde/user-contextspecifieke locatie of expliciete bestandsrestrictie. Niet blind een pad schrijven |
+| **T4 Originele FaceBundles** | Bestaande on-disk systeemfolders `NTKZeusFaceBundle`, `NTKHermes2025FaceBundle`, NanoTimeKit en nanotimekitd; geen `dlopen` | Welke originele firmwarepaden in de live Watch-namespace bestaan en leesbaar zijn | Afwezigheid van één kandidaat zegt niets over een ingebedde/dyld-herlocatieerde implementatie |
+
+**Interpretatie van logging:** `sandbox_check=ALLOW` en `bootstrap_look_up kr=0` mogen nooit als 'de wijzerplaat kan worden toegevoegd' worden gepresenteerd. Er is geen library-mutate, geen face-installatie, geen fake systeemidentiteit en geen AppGroup-symlink.
+
+## 3. Vervolgtesten afhankelijk van de eerste vier uitkomsten
+
+| Spoor | Onderzoek / volgende toets | Gate die we willen isoleren | Toelatingsvoorwaarde |
+|---|---|---|---|
+| **T5: Library XPC-contract** | In originele 23U95 daemon de exacte exported `NSXPCInterface`-selector en intern server-object traceren; caller audit-token en entitlementchecks uit disassembly | Kan een gewone Watch-app überhaupt een **read-only** gestructureerde library-status opvragen? | Pas device-contact overwegen wanneer T1/T2 lookup vrijgeven en methoden aantoonbaar alleen lezen |
+| **T6: CLKDevice/PDR-eigenaar** | Matching 23U95 `ClockKit` en NanoRegistry/paired registry offline traceren van `collectionType` en `deviceCategory` naar herkomst/eigenaar; iOS-26.1 `CLKDevice` is slechts vergelijkingsmateriaal | Komt de gate uit MG, Apple-private NanoRegistry of een proces-lokale descriptor? | Geen aanpassing van apparaatidentiteit; eerst bron en authorisatie bewijzen |
+| **T7: Native library record path** | Volg originele `NTKDCollectionStore._queue_addFace`, sync reset, JSON deserialisatie, gallery reloading en `faceBundleForBundleIdentifier` volledig (gecontroleerd per SHA + codeflow) | Is een native opgeslagen record onafhankelijk van galerie-enumeratie of wordt het opnieuw gefilterd bij render? | Alleen statisch; geen `resetWithFaces` naar echt apparaat wegens risico op verlies bestaande wijzerplaten |
+| **T8: Snapshot/migration exception** | Reconstrueer op 23U95 het eerder openstaande `0x55CE73DC` FaceBundleManager-exceptiepredicaat en exacte callercontext | Is een gelimiteerde interne uitzonderingsroute relevant buiten de Apple snapshots/migratie? | Niet aannemen dat een migratievlag systeem-eligibility overrulet; geen ZIP-tests zonder nieuwe data |
+| **T9: App Group Class7** | Vergelijk eerder bestaande `BQRunClass7ControlMatrix` met daadwerkelijke app entitlement, issuerprofiel en `open(O_RDWR)` in **uitsluitend eigen testcontainer** | Verkrijgt dezelfde signer een echt schrijfbare uitbreiding in een **zelf beheerde** App Group? | Alleen met App Group-entitlement die werkelijk in ondertekende app zit; een write in eigen groep bewijst geen write in Apple's systeemgroep |
+| **T10: Native Carousel na herstart** | UI-validatie op Watch zelf: systeemgalerij, actieve wijzerplaat, verwijderen/herselecteren, herstart en app sluiten | Uiteindelijk functionaliteit/persistentie | Pas na aantoonbaar toegestane/native toevoeging, nooit voor een alleen-leesdiagnosticum |
+
+## 4. Alternatieve routes: concrete feiten vs speculatie
+
+- **MobileGestalt cache direct via `bad_query` Class13:** echte Watch-resultaten `O_RDWR=EPERM`; kernel 23U95 eist Apple system-group autorisatie. Opnieuw dezelfde flags draaien levert geen nieuwe informatie.
+- **Een andere App Group via Class7:** nuttig als brononderzoek, maar `/private/var/mobile/Library/NanoTimeKit` en `FaceSupport` zijn in de onderzochte daemon **geen bekende gewone AppGroup-root**. AppGroup-toegang tot een willekeurig doel maakt de systeemgalerij niet toegankelijk.
+- **Preference `ShowHardwareSpecificFaces` zetten:** de originele 23U95-functie short-circuitt bij `NTKInternalBuild=false`. Zonder andere autorisatie is dit geen bypass.
+- **Gallerij- of thumbnailcache aanpassen:** een andere representatie op het scherm is niet gelijk aan een legitiem `NTKFace`-object; native lookup en klassebescherming blijven.
+- **Een echte systeemface ontvangen via eerstelijns import:** herhaalde `_NTKCanAddWatchFace` en descriptorcontroles; geen bewezen native unlock.
+- **Privileged first-party daemon:** heeft aantoonbare store-permissies, maar T1/T2 en T5 moeten uitwijzen of hij überhaupt een geldige niet-Apple client accepteert. Een mach-poort is geen privilege.
+- **WatchOS 27 sandboxuitgifte:** de originele Apple sandbox issuerregels verschillen aantoonbaar van 23U95; watchOS 27 PoC's zijn niet automatisch compatibel.
+
+## 5. Stopvoorwaarden en onderzoeksbewijs
+
+- Geen write-, unlink-, symlink- of resetacties in Apple-containers in `Native Face Lab`.
+- Leg exacte foutcodes vast, niet slechts 'werkt niet'. `ENOENT`, `EPERM`, sandbox policy `DENY`, geen bootstrapport en een afgewezen library API zijn verschillende uitkomsten.
+- Bij ontbrekende signed AppGroup of private entitlements **niet** doen alsof ze door een andere flag verkregen zijn.
+- iPhone- en Watch-processen gebruiken niet altijd dezelfde apparaatdescriptor: `CLKDevice` kan via NanoRegistry/PDR toegang opbouwen en de fallback is procesafhankelijk.
+- Succes pas wanneer een originele Hermès FaceBundle in Apples eigen systeemgalerij op de Watch verschijnt, zonder een draaiende helper, ook na opnieuw selecteren/herstart.
+
+**Huidige status:** T1–T4 zijn in code geïmplementeerd en worden door GitHub Actions gecompileerd; er zijn nog **geen fysieke Watch-logresultaten** van deze vier tests. Spoor T5–T10 is doelbewust nog niet als risicovolle device-write uitgevoerd.
