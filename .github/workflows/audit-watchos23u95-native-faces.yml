@@ -1,0 +1,87 @@
+name: Independently disassemble real watchOS 23U95 native-face gates
+
+on:
+  push:
+    branches:
+      - research/23u95-native-face-alternative-stores-20261117
+    paths:
+      - '.github/workflows/audit-watchos23u95-native-faces.yml'
+      - 'Research/firmware-23u95/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-face-static-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone current blacktop ipsw with remote APFS ranges
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit extracted /tmp/ipswcli
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          (cd /tmp/ipsw-source && git rev-parse HEAD) > audit/ipsw-commit.txt
+          echo 'Original Watch6,18 26.6.1 23U95 IPSW from Apple CDN; partial-byte-range extraction, full firmware hash not checked' > audit/provenance.txt
+      - name: Install Go matching source
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build modern ipsw
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 650 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw)
+          /tmp/ipswcli/ipsw version > audit/tool-version.txt 2>&1
+          /tmp/ipswcli/ipsw extract --help > audit/extract-help.txt 2>&1
+          grep -F -- '--ranged' audit/extract-help.txt
+      - name: Extract actual NanoTimeKit and native ClockFace code (read-only)
+        shell: bash
+        run: |
+          set +e
+          PATTERN='^/(Applications/ClockFace.app/ClockFace|System/Library/PrivateFrameworks/(NanoTimeKit|NanoFaceGallery)\.framework/(NanoTimeKit|NanoFaceGallery)|System/Library/NanoTimeKit/FaceBundles/NTKZeusFaceBundle\.bundle/NTKZeusFaceBundle|System/Library/NanoTimeKit/FaceBundles/NTKHermes2025FaceBundle\.bundle/NTKHermes2025FaceBundle)$'
+          echo "$PATTERN" > audit/pattern.txt
+          timeout 1100 /tmp/ipswcli/ipsw extract --remote --files --ranged --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" > audit/extract.log 2>&1
+          echo "extract_exit=$?" > audit/status.txt
+          find extracted -type f -printf '%p %s bytes\n' | sort > audit/actual-files.txt
+          tail -n 40 audit/extract.log
+          exit 0
+      - name: Static method and gate audit of exact extracted binaries
+        shell: bash
+        run: |
+          set +e
+          python3 -m pip install --user --disable-pip-version-check capstone==5.0.6 > audit/pip-capstone.log 2>&1
+          echo "pip_exit=$?" >> audit/status.txt
+          mkdir -p audit/binaries
+          while IFS= read -r -d '' f; do
+            name="$(basename "$f")"
+            {
+              sha256sum "$f"
+              file "$f"
+              stat -c 'size=%s' "$f"
+            } > "audit/binaries/$name.metadata.txt"
+            strings -a -n 8 "$f" | grep -Ei 'NTKInternalBuild|NTKShowHardwareSpecificFaces|ShowInternalFaces|com.apple.NanoTimeKit.face|isRestrictedForDevice|deviceBrand|collectionType|FaceSupport|FaceBundles|DeviceCategory|_NTKCanAddWatchFace|Carousel|prefsd|AppleInternal|Hermes|Poodle' | head -n 250 > "audit/binaries/$name.relevant-strings.txt" || true
+          done < <(find extracted -type f -print0)
+          NTK="$(find extracted -type f -name NanoTimeKit -print -quit)"
+          if [[ -n "$NTK" ]]; then
+            python3 Research/firmware-23u95/inspect_native_gates.py "$NTK" > audit/actual-23u95-native-gates-disassembly.txt 2>&1
+            echo "exact_native_gate_disassembly_exit=$?" >> audit/status.txt
+          else
+            echo 'BLOCKED: NanoTimeKit not extracted' > audit/BLOCKED.txt
+          fi
+          echo 'No live Watch used; no protected write; no permission bypass claimed' >> audit/provenance.txt
+          exit 0
+      - name: Upload audit logs and selected disassembly only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-23u95-native-face-policy-and-store-audit
+          path: audit/
+          retention-days: 14
+          if-no-files-found: error
