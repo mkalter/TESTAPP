@@ -5,6 +5,16 @@ struct WatchFacesView: View {
 
     var body: some View {
         List {
+            Section("Originele Hermès wijzerplaten") {
+                NavigationLink {
+                    OriginalHermesView()
+                } label: {
+                    Label("Bekijk 6 wijzerplaten", systemImage: "clock")
+                }
+                Text("Experimentele Apple NanoTimeKit-weergave, direct in deze app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section {
                 Toggle("Hermès", isOn: Binding(get: { model.hermesEnabled }, set: { model.perform(.hermes($0)) }))
                 Toggle("Ultra Faces", isOn: Binding(get: { model.ultraFacesEnabled }, set: { model.perform(.ultraFaces($0)) }))

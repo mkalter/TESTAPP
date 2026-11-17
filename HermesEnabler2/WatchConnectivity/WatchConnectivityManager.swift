@@ -107,6 +107,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
             "complete-diagnostics.txt",
+            "original-hermes-last-result.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -148,6 +149,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "class7-flag-matrix.txt",
             "mg-permission-diagnostics.txt",
             "complete-diagnostics.txt",
+            "original-hermes-last-result.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
