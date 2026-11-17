@@ -1,0 +1,129 @@
+name: Research real watchOS 26.6.1 kernel sandbox (Watch6,18)
+
+on:
+  push:
+    branches:
+      - research/real-23u95-firmware-sandbox-20261117
+    paths:
+      - '.github/workflows/research-watchos-23u95.yml'
+      - 'Research/firmware-23u95/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-firmware-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+      IP_SW_TOOL: https://github.com/blacktop/ipsw/releases/download/v3.1.749/ipsw_3.1.749_linux_x86_64.tar.gz
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v4
+
+      - name: Prepare bounded research output
+        run: |
+          mkdir -p research-output/commands research-output/kernel firmware /tmp/ipswcli
+          echo 'Source: Apple Watch Ultra 1 (Watch6,18) watchOS 26.6.1 (23U95)' > research-output/source.txt
+          echo "Apple official firmware URL: ${IPSW_URL}" >> research-output/source.txt
+          echo 'Expected Apple Wiki SHA1 (full 5.0 GB IPSW): 186fad907c7d00684313d0250482031235ed76a9' >> research-output/source.txt
+          echo 'IMPORTANT: remote extraction alone cannot verify full-archive SHA1' >> research-output/source.txt
+          echo 'No Watch hardware touched; all operations offline/remote read only' >> research-output/source.txt
+
+      - name: Install pinned blacktop ipsw 3.1.749
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 3 --connect-timeout 25 "$IP_SW_TOOL" -o /tmp/ipswcli/ipsw.tar.gz
+          tar -tzf /tmp/ipswcli/ipsw.tar.gz | head -20
+          tar -xzf /tmp/ipswcli/ipsw.tar.gz -C /tmp/ipswcli
+          ls -la /tmp/ipswcli
+          chmod +x /tmp/ipswcli/ipsw
+          /tmp/ipswcli/ipsw version | tee research-output/commands/tool-version.txt
+
+      - name: Extract kernelcache directly from Apple IPSW URL via HTTP range
+        shell: bash
+        run: |
+          set +e
+          echo "STARTED $(date -u +%FT%TZ)" >> research-output/source.txt
+          timeout 1350 /tmp/ipswcli/ipsw extract --kernel --remote \
+            --output "$PWD/firmware" "$IPSW_URL" \
+            > research-output/commands/remote-kernel-extract.log 2>&1
+          result=$?
+          printf '%s\n' "$result" > research-output/commands/remote-kernel-extract.exit
+          echo "EXIT=$result"
+          tail -n 100 research-output/commands/remote-kernel-extract.log
+          find firmware -maxdepth 6 -type f -printf '%p %s bytes\n' | tee research-output/commands/extracted-file-list.txt
+          echo "FINISHED $(date -u +%FT%TZ)" >> research-output/source.txt
+          exit 0
+
+      - name: Decompile actual watchOS kernel sandbox and query protected cache authorization
+        shell: bash
+        run: |
+          set +e
+          KC="$(find firmware -type f \( -iname '*kernelcache*' -o -iname '*kernel.*' \) | head -1)"
+          if [[ -z "$KC" ]]; then
+            echo "BLOCKED: no kernelcache extracted from exact firmware" | tee research-output/commands/BLOCKED.txt
+            exit 0
+          fi
+          cp -- "$KC" research-output/kernel/original-kernelcache
+          printf 'Kernel path: %s\n' "$KC" | tee research-output/commands/kernel-metadata.txt
+          ls -lh "$KC" | tee -a research-output/commands/kernel-metadata.txt
+          sha256sum "$KC" | tee -a research-output/commands/kernel-metadata.txt
+          file "$KC" | tee -a research-output/commands/kernel-metadata.txt
+
+          for cmd in 'sb list' 'sb opts'; do
+            label="${cmd// /_}"
+            timeout 120 /tmp/ipswcli/ipsw $cmd "$KC" > "research-output/commands/${label}.txt" 2>&1
+            echo "$cmd: $?" | tee -a research-output/commands/run-status.txt
+          done
+
+          for profile in containermanagerd containermanagerd_system MobileGestaltHelper container; do
+            timeout 150 /tmp/ipswcli/ipsw sb dec "$KC" "$profile" \
+              -O "research-output/commands/${profile}.sb" \
+              > "research-output/commands/decompile-${profile}.log" 2>&1
+            echo "decompile-$profile: $?" | tee -a research-output/commands/run-status.txt
+          done
+
+          timeout 500 /tmp/ipswcli/ipsw sb query path-write \
+            /private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist \
+            "$KC" -O json > research-output/commands/mg-path-write.json 2> research-output/commands/mg-path-write.stderr
+          echo "path-write: $?" | tee -a research-output/commands/run-status.txt
+
+          timeout 350 /tmp/ipswcli/ipsw sb query mach-lookup \
+            com.apple.mobilegestalt.xpc "$KC" -O json \
+            > research-output/commands/mg-mach-lookup.json 2> research-output/commands/mg-mach-lookup.stderr
+          echo "mach-lookup: $?" | tee -a research-output/commands/run-status.txt
+
+          echo "DONE: inspect command outputs and distinguish successful parse from errors." | tee research-output/commands/RESULT.txt
+          exit 0
+
+      - name: Package research results and kernel digest
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          find research-output -type f -printf '%p %s bytes\n' | sort > research-output/manifest.txt
+          if [[ -f research-output/kernel/original-kernelcache ]]; then
+            # Kernelcache may contain Apple proprietary code: retain only its SHA metadata.
+            rm -f research-output/kernel/original-kernelcache
+          fi
+          tail -n 80 research-output/commands/remote-kernel-extract.log || true
+          {
+            echo '### Watch6,18 / 23U95 independent firmware research'
+            echo 'Remote extraction against an Apple CDN firmware image.'
+            echo 'Analysis results and complete command logs are saved in the artifact.'
+            echo 'A successful workflow does **not** mean sandbox analysis succeeded: see run-status and BLOCKED.'
+            echo 'No live device writes were attempted.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostics and any decompiled sandbox rules
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-watchos-23u95-sandbox-research
+          path: research-output/
+          if-no-files-found: error
+          retention-days: 14
