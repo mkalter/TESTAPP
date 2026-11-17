@@ -58,7 +58,7 @@ jobs:
           set -euo pipefail
           cd /tmp/ipsw-latest
           go version
-          timeout 700 go build -tags sandbox -o /tmp/ipswcli/ipsw ./cmd/ipsw
+          timeout 700 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw
           /tmp/ipswcli/ipsw extract --help > "$GITHUB_WORKSPACE/audit/extract-help-current.txt" 2>&1
           grep -F -- '--ranged' "$GITHUB_WORKSPACE/audit/extract-help-current.txt"
           /tmp/ipswcli/ipsw version > "$GITHUB_WORKSPACE/audit/tool-version-current.txt" 2>&1
