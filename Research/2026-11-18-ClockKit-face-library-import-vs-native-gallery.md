@@ -282,3 +282,51 @@ _queue_setupConnectionIfNeeded` from symbol names in the original
 unmodified Mach-O where possible. It stays offline, SHA-guarded,
 and records explicit symbol-count limitations instead of claiming
 a bypass. No on-watch test repeats are necessary for this parser work.
+
+
+## Breakthrough: exact Watch6,18 first-party ClockKit connection option
+
+[Original ARM64_32 Mach-O symbol+disassembly run #44273680584](https://github.com/mkalter/TESTAPP/actions/runs/44273680584)
+**SUCCESS**, source ClockKit SHA verified
+`225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad`.
+
+Independent original `LC_SYMTAB` parsing found **8,478 valid symbols**,
+**26 face-library-related original functions and actual IMPs** despite
+unsupported dyld direct selectors in the original method-list parser.
+It identified exact original implementation:
+
+`-[CLKWatchFaceLibraryServer _queue_setupConnectionIfNeeded]`
+at `0x49c64340`.
+
+Verified relevant original ARM64 instructions:
+
+```asm
+0x49c64360 adrp x8, #0x71273000
+0x49c64364 ldr  w0, [x8, #0xa38]  ; class-ptr setup
+0x49c6436c adrp x8, #0x7416d000
+0x49c64370 add  x8, x8, #0xf7c
+0x49c64374 ldr  w2, [x8]          ; Apple ClockKit name
+0x49c64378 mov  w3, #0x1000       ; NSXPCConnectionPrivileged bit
+0x49c6437c bl   #0x49cccb20      ; ObjC client initializer stub
+```
+
+This directly proves that the original ClockKit watchOS setup passes
+**a fourth argument of 0x1000 to an ObjC initializer**, consistent with
+`initWithMachServiceName:options:` and
+`NSXPCConnectionPrivileged`. The exact symbol name of the BL target
+is separately being checked in [symbol-matching #44274797889](https://github.com/mkalter/TESTAPP/actions/runs/44274797889).
+Do not overstate the selector identification before that check.
+
+This exposes a more specific mismatch than T7-v1: the previously
+built T7-v2 used Mach-service initialization with **options=0**,
+where the genuine Apple Watch original uses **0x1000**. Corrected
+T7-v3 now uses `initWithMachServiceName:options:` with option
+`(NSUInteger)0x1000`, and logs that this selects launchd's
+privileged namespace. The flag **does not grant entitlements** or
+bypass server-side client auditing or face eligibility.
+
+[Source contract run #44274693095](https://github.com/mkalter/TESTAPP/actions/runs/44274693095)
+**SUCCESS**. [IPA CI #44274658480](https://github.com/mkalter/TESTAPP/actions/runs/44274658480)
+started, with conclusion checked separately before providing an IPA.
+Only T7 needs to be rerun on physical Watch after successful code signing;
+T1–T6 remain unchanged. No proof of native Hermès unlock.
