@@ -531,3 +531,59 @@ The next safe check is therefore to audit how Apple's trusted migration
 code passes `forMigration` to the bundle manager and what validates the
 **incoming native face collection records**. Read-only physical T8 already
 provides current ordinary-vs-Hermès availability without mutating anything.
+
+
+## Physical T8 selective face rejection PROVEN and new in-process T9 probe (18 November)
+
+**T8 live original Watch6,18/23U95 09:50:24 UTC**:
+- The on-watch `NTKFaceDescriptor` and `CLKDevice` actually loaded and
+  returned `utility` style 0 as locally available.
+- The real first-party ClockKit server validated that actual standard
+  Apple face via `initWithMachServiceName:options: (0x1000)`:
+  **REPLY success**.
+- Both original signed Hermès IDs `com.apple.NTKZeusFaceBundle` and
+  `com.apple.Hermes2025Face` returned
+  `CLKWatchFaceLibraryErrorDomain code=4 FaceNotAvailable`;
+  their local descriptors independently returned
+  **NOT AVAILABLE**. Thus this is a genuinely **selective**
+  FaceBundle/device-availability gate, not a broken universal RPC
+  validator. The exact per-face rejection branch beyond the
+  manager lookup remains under investigation.
+
+**T9** now added in
+`HermesEnabler2/BQClockKitReadonlyValidation.m` as a separate opt-in
+`Native Face Lab → T9 · Migratie-lookup`.
+The method `BQRunClockKitMigrationLookupDifferential` performs only
+in-process Apple NanoTimeKit
+`faceBundleForBundleIdentifier:onDevice:forMigration:` lookups
+`NO → YES → NO` on *actual original on-device bundle IDs*.
+It records nil/non-nil, original `faceClass` and
+`isRestrictedForDevice:`. It neither imports a `.watchface` nor
+asks the native Carousel daemon to add/reset anything.
+The bundled loader may populate a transient NSDictionary cache in the
+Watch app process but no persistent gallery write is invoked.
+T9 has **no physical result yet**.
+
+### Full JSON migration consumer from exact original Watch6,18 firmware
+
+[SHA-checked original NanoTimeKit firmware run #44280447358](https://github.com/mkalter/TESTAPP/actions/runs/44280447358)
+**SUCCESS**, original SHA `e77ccd6c26b7413b2fba543207d9c20f5c33e97faaa2e5801050194f25b87d63`.
+**51,803 symbols; 16 target symbol names; 14 verified code functions**.
+The original
+`+[NTKFace faceWithJSONObjectRepresentation:forDevice:forMigration:allowFallbackFromInvalidFaceStyle:]`
+was mapped to **0x54477BD8**, and directly calls the original selector
+`faceBundleForBundleIdentifier:onDevice:forMigration:` at PC
+**0x54477FE4**, followed by original `faceClass` at
+**0x54477FFC**. The same JSON constructor also invokes
+`_applyConfiguration:allowFailure:forMigration:` at
+**0x544781E8**. Thus `forMigration` is a real alternative
+inside Apple's normal JSON face object reconstruction, not only a
+dormant `NTKFaceBundleManager` method. The consumer does **not**
+thereby imply that untrusted XPC clients may request a true migration
+or persist native FaceStore records. The earlier verified normal
+`NTKFaceDescriptor` and ClockKit validators still use the regular
+`forMigration=NO` route.
+
+These findings clarify a genuine *read-only diagnostic opportunity*
+(T9), but are not a tested original Hermès face activation, nor a
+protected cache write or authorized system gallery state change.
