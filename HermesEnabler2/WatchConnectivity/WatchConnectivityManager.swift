@@ -121,6 +121,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "clockkit-readonly-face-validation.txt",
             "clockkit-availability-differential.txt",
             "clockkit-migration-local-differential.txt",
+            "hermes2025-live-identity-gates.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -176,6 +177,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "clockkit-readonly-face-validation.txt",
             "clockkit-availability-differential.txt",
             "clockkit-migration-local-differential.txt",
+            "hermes2025-live-identity-gates.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
