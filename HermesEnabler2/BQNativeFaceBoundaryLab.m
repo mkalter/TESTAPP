@@ -98,8 +98,58 @@ static NSArray<NSDictionary<NSString *, NSString *> *> *NFBServices(void) {
         @{@"name":@"com.apple.nanotimekit.facesupportserver", @"role":@"face assets service"},
         @{@"name":@"com.apple.nanotimekit.facesnapshotserver", @"role":@"snapshot service"},
         @{@"name":@"com.apple.Carousel.NTKServer", @"role":@"Carousel server candidate"},
-        @{@"name":@"com.apple.mobilegestalt.xpc", @"role":@"MobileGestalt lookup control (no XPC)"}
+        @{@"name":@"com.apple.mobilegestalt.xpc", @"role":@"MobileGestalt lookup control (no XPC)"},
+        @{@"name":@"com.apple.tccd", @"role":@"TCC protected-file advisory candidate (no XPC)"},
+        @{@"name":@"com.apple.mobile.softwareupdated", @"role":@"Software Update advisory candidate (no XPC)"}
     ];
+}
+
+
+/**
+ * T5: read-only triage for separately published TCC / Software Update
+ * protected-file advisories. This is NOT a vulnerability proof or XPC call.
+ * Do not infer path traversal, arbitrary write, or native-face activation.
+ */
+NSString *BQRunProtectedWriterServiceGate(void) {
+    NSMutableArray<NSString *> *lines = NFBStart(@"T5: protected-file service boundary");
+    [lines addObject:@"Context: TCC (CVE-2026-86886) and Software Update (CVE-2026-84609)."];
+    [lines addObject:@"Only own-process sandbox preflight and target lstat metadata."];
+    [lines addObject:[NSString stringWithFormat:@"Caller uid=%lu euid=%lu gid=%lu egid=%lu",
+                      (unsigned long)getuid(), (unsigned long)geteuid(),
+                      (unsigned long)getgid(), (unsigned long)getegid()]];
+    NFBSandboxCheck check = NFBCheckFunction();
+    NSArray<NSDictionary<NSString *, NSString *> *> *services = @[
+        @{@"name":@"com.apple.tccd", @"role":@"TCC (original 23U95 launchd name)"},
+        @{@"name":@"com.apple.mobile.softwareupdated", @"role":@"Software Update (original 23U95 launchd name)"},
+        @{@"name":@"com.apple.mobilegestalt.xpc", @"role":@"MobileGestalt helper control"},
+        @{@"name":@"com.apple.ClockKit.CLKWatchFaceLibrary", @"role":@"ClockKit library control"}
+    ];
+    for (NSDictionary<NSString *, NSString *> *service in services) {
+        NSString *name = service[@"name"];
+        [lines addObject:[NSString stringWithFormat:@"[%@] %@", name, service[@"role"]]];
+        [lines addObject:[NSString stringWithFormat:@"mach-lookup=%@",
+                          NFBCheck(check, @"mach-lookup", NFBFilterGlobalName, name)]];
+    }
+    NSString *target = BQMobileGestaltPath();
+    [lines addObject:[NSString stringWithFormat:@"Protected cache=%@", target]];
+    struct stat st = {0};
+    errno = 0;
+    if (lstat(target.fileSystemRepresentation, &st) == 0) {
+        [lines addObject:[NSString stringWithFormat:
+            @"lstat type=%@ mode=%04o uid=%lu gid=%lu size=%lld",
+            S_ISREG(st.st_mode) ? @"regular" : (S_ISLNK(st.st_mode) ? @"symlink" : @"other"),
+            (unsigned)(st.st_mode & 07777), (unsigned long)st.st_uid,
+            (unsigned long)st.st_gid, (long long)st.st_size]];
+        [lines addObject:[NSString stringWithFormat:@"caller-owns-cache=%@ (POSIX only; NOT sandbox authorization)",
+                          (st.st_uid == geteuid()) ? @"YES" : @"NO"]];
+    } else {
+        [lines addObject:[NSString stringWithFormat:@"target lstat=%@", NFBError(errno)]];
+    }
+    [lines addObject:[NSString stringWithFormat:@"cache file-write-data sandbox=%@",
+                      NFBCheck(check, @"file-write-data", NFBFilterPath, target)]];
+    [lines addObject:@"No bootstrap port lookup, XPC request, protected write-open or file mutation."];
+    [lines addObject:@"Even ALLOW does not establish service-side entitlement authorization."];
+    return NFBFinish(lines, @"protected-writer-service-gate.txt");
 }
 
 NSString *BQRunNativeFaceMachPolicy(void) {
