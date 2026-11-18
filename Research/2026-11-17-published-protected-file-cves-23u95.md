@@ -30,6 +30,37 @@ Decompiled profiles present and authenticated:
 
 **Important distinction:** The CVEs say a protected file could be modified somewhere. They do **not** establish that an app can choose the **exact already-existing** MobileGestalt plist as destination, or that a normal development-signed Watch app can exercise the vulnerable IPC selector. A deliberate delete/rename race against protected MG is unjustified without a demonstrated reversible writing primitive.
 
+## 18 November — exact original executables and frameworks, not guessed components
+
+Both new read-only GitHub Actions workflows completed successfully:
+
+- [Original daemon executable and launchd identities, #44252358717](https://github.com/mkalter/TESTAPP/actions/runs/44252358717) — artifact `14404462717`
+- [Original ARM64_32 TCC and SoftwareUpdate frameworks, #44251991042](https://github.com/mkalter/TESTAPP/actions/runs/44251991042) — artifact `14403314605`
+
+The source is **Watch6,18 watchOS 26.6.1 (23U95)**, not iOS; the framework images and launch manifests were extracted from the corresponding original Apple IPSW. Reports only, no proprietary Apple Mach-O redistribution.
+
+**Actual launchd process identity and Mach service**:
+
+| Service | Exact original launch path | `UserName` | Mach service |
+|---|---|---|---|
+| TCC | `/System/Library/PrivateFrameworks/TCC.framework/Support/tccd` | `mobile` | `com.apple.tccd` |
+| Software Update | `/System/Library/PrivateFrameworks/MobileSoftwareUpdate.framework/Support/softwareupdated` | `mobile` | `com.apple.mobile.softwareupdated` |
+
+Original `tccd` executable SHA-256 `b885388cef4b25b4988b9b312d3ab6dd2b11d27b9baf0fefc3e18bb29d7dbf9d`; `softwareupdated` SHA-256 `97d4ecb485e55a1a889d33291ad888c93776b3d20c1b0a991d3264d47cff0b63`.
+
+**Actual framework code present**:
+- TCC.framework/TCC SHA-256 `c7619df3ce83891423b5f0c07b6f0c8711ee15e22305f687d8419f370404d04f`; original nlist strings include `_TCCAccessSetForPathWithOptions` and `_tcc_authorization_check_audit_token`. This is TCC access-control API and NOT proof of arbitrary on-disk file writes.
+- SoftwareUpdateCore.framework SHA-256 `08b40ee05a9e81f55d8534ee677998b6b17fa58d9ce91043cb662c9709f6fd74`; original paths and selectors are associated with staged update payloads, release notes and update volumes. No unconstrained MobileGestalt destination is established.
+- MobileSoftwareUpdate.framework SHA-256 `ab2e6b114cb323367904eba519ab5bacd87dc7d6c7d595c489f07d1834498076`.
+- Original `tccd` text contains `sandbox_check_by_audit_token` and checks for missing private entitlements.
+- Original `softwareupdated` text contains `Client does not have entitlement %s` and `_xpc_connection_copy_entitlement_value`. Its client interface is not an unconstrained arbitrary-write service.
+
+ARM64_32 Objective-C `ipsw class-dump` returned EOF while reading metadata on these images. Therefore method names gleaned from strings alone are NOT authenticated implementations; identifying exact vulnerable input requires disassembly or a researcher-released PoC. No on-Watch mutations were attempted.
+
+**Two separate controls must be crossed** to make the requested MG write: privileged service must be reachable with an accepted request *and* the resolved protected destination must pass effective sandbox + POSIX checks. On this build both TCC and Software Update are configured as the **mobile** user; previous physical Watch measurements found MobileGestalt mode `0644` but **did not establish its owner UID**. The owner must be verified before concluding that a mobile-user exploit cannot write it. The vulnerable versions asserted by Apple do not by themselves bypass POSIX ownership.
+
+The earlier initial fetch matched an irrelevant `dasd` launch manifest due to a broad `asd` substring. That was corrected in the subsequent verified extraction; it is **not** evidence about the App Store `asd` daemon.
+
 ## Data required to identify a true new writer
 
 1. An actual vulnerable service entrypoint with client-reachable IPC on **23U95** that accepts file path and **arbitrary content**.
