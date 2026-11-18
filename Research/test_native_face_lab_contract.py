@@ -41,6 +41,28 @@ assert '@"com.apple.tccd"' in objc and '@"com.apple.mobile.softwareupdated"' in 
 assert 'st.st_uid == geteuid()' in objc
 assert 'T5 · TCC / Software Update' in swift
 assert 'T6 · Apple-daemonrechten' in swift
+assert 'T7 · ClockKit-validatie' in swift
+assert 'BQRunClockKitReadOnlyFaceValidation' in headers and 'BQRunClockKitReadOnlyFaceValidation()' in swift
+assert '"clockkit-readonly-face-validation.txt"' in transport
+t7 = (root / "HermesEnabler2/BQClockKitReadonlyValidation.m").read_text()
+assert 'validateFaceType:faceType faceBundleId:bundleID' in t7
+assert 'remoteObjectProxyWithErrorHandler:' in t7
+assert 'BQCkRunNeverExists' not in t7
+assert '5*NSEC_PER_SEC' in t7  # bounded XPC response wait; no infinite blocking
+assert 'if (!bundle.length) continue;' in t7
+assert '"clockkit-readonly-face-validation.txt"' in t7
+assert '"com.apple.ClockKit.CLKWatchFaceLibrary"' in t7
+# T7 may only call Apple's *validator*. It is a separate opt-in, never in the
+# existing six-test read-only batch and cannot import or mutate native faces.
+batch = swift.split("private func runAll()",1)[1]
+assert 'BQRunClockKitReadOnlyFaceValidation()' not in batch
+code_t7 = re.sub(r'/\\*.*?\\*/|//[^\\n]*', '', t7, flags=re.S)
+code_t7 = re.sub(r'@"(?:\\\\.|[^"\\\\])*"|"(?:(?:\\\\.)|[^"\\\\])*"', '""', code_t7)
+for forbidden in ('addWatchFaceAtURL:', 'openWatchFaceURLWithSecurityScopedURL:',
+    'openWatchFaceURLWithBookmarkData:', '_queue_addFace:forUUID:',
+    'rebuildCache:', 'setCacheSentinel:', 'MGSetAnswer(', 'pwrite(', 'unlink('):
+    assert forbidden not in code_t7, f"Forbidden unsafe T7 method: {forbidden}"
+
 assert 'proc_listallpids' in objc and 'proc_name' in objc
 assert 'check(pid, "file-write-data"' in objc
 assert 'task_get_special_port(mach_task_self()' not in objc, (
@@ -62,7 +84,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six named watchOS probes, their iPhone log transfer and paths")
+print("PASS: six no-RPC watchOS probes plus one explicitly opt-in read-only ClockKit validator")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
