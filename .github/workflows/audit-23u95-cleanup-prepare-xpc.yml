@@ -1,0 +1,100 @@
+name: Inspect original 23U95 MobileSoftwareUpdate cleanup-path XPC service
+
+on:
+  push:
+    branches:
+      - research/23u95-vs27-tcc-update-validation-diff-20261118
+    paths:
+      - '.github/workflows/audit-23u95-cleanup-prepare-xpc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-watch6-18:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 26
+    env:
+      FW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build original-source APFS range reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source originals audit images /tmp/watchipsw
+          git clone --depth 1 https://github.com/blacktop/ipsw.git source/ipsw
+          git -C source/ipsw rev-parse HEAD > audit/parser-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: source/ipsw/go.mod
+          cache: false
+      - name: Build ipsw and extract exact original XPC service
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd source/ipsw && timeout 700 go build -o /tmp/watchipsw/ipsw ./cmd/ipsw)
+          /tmp/watchipsw/ipsw version > audit/parser-version.txt 2>&1
+          echo "Apple Watch6,18 watchOS26.6.1 build23U95" > audit/provenance.txt
+          echo "$FW_URL" >> audit/provenance.txt
+          PATTERN='^/System/Library/PrivateFrameworks/MobileSoftwareUpdate\.framework/XPCServices/com\.apple\.MobileSoftwareUpdate\.CleanupPreparePathService\.xpc/(Info\.plist|com\.apple\.MobileSoftwareUpdate\.CleanupPreparePathService)$'
+          echo "$PATTERN" > audit/pattern.txt
+          timeout 1000 /tmp/watchipsw/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/originals" "$FW_URL" \
+            > audit/extract.log 2>&1
+          find originals -type f -printf '%p %s bytes\n' > audit/files.txt
+          echo 'Original source decompression only, no XPC connection or device mutation.' > audit/limitations.txt
+      - name: Report static XPC program identity, code methods and path checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib,plistlib,subprocess
+          root=Path('originals')
+          info=[]
+          for f in root.rglob('*'):
+              if not f.is_file():continue
+              b=f.read_bytes()
+              typ=subprocess.run(['file','-b',str(f)],capture_output=True,text=True).stdout.strip()
+              data={'relative':str(f.relative_to(root)),'bytes':len(b),
+                    'sha256':hashlib.sha256(b).hexdigest(),'type':typ}
+              if f.name=='Info.plist':
+                  try:
+                      plist=plistlib.loads(b)
+                      data['selected_plist_properties']={k:v for k,v in plist.items()
+                        if k in ('CFBundleIdentifier','CFBundleExecutable','XPCService','XPCServiceName',
+                                 'SMAuthorizedClients','ServiceType')}
+                  except Exception as e:data['parse_error']=str(e)
+              elif f.name=='com.apple.MobileSoftwareUpdate.CleanupPreparePathService':
+                  import re
+                  lines=subprocess.run(['strings','-a','-n','5',str(f)],
+                    capture_output=True,text=True).stdout.splitlines()
+                  key=re.compile(r'path|clean|remov|valid|entitl|audit|file|sandbox|client|prefix|root|symlink|realpath|rename|delete|xpc',re.I)
+                  selected=[l for l in lines if key.search(l)]
+                  Path('audit/cleanup-service-strings.txt').write_text('\n'.join(selected[:1600])+'\n')
+                  data['selected_strings']=len(selected)
+                  subprocess.run(['/tmp/watchipsw/ipsw','macho','info',str(f)],
+                    stdout=open('audit/service-macho-info.txt','w'),stderr=subprocess.STDOUT,timeout=90)
+                  if typ.startswith('Mach-O'):
+                      Path('images/CleanupPreparePathService').write_bytes(b)
+              info.append(data)
+          Path('audit/original-xpc-program.json').write_text(json.dumps(info,indent=2,default=str)+'\n')
+          print(json.dumps(info,indent=2,default=str))
+          if not info:Path('audit/BLOCKED.txt').write_text('XPC service not found at assumed firmware path; no presence claim.\n')
+          PY
+          if [[ -f images/CleanupPreparePathService ]]; then
+            python3 Research/firmware-23u95/summarize_tcc_update_macho.py \
+              --input images --version 'Watch6,18 watchOS26.6.1 original cleanup-XPC' \
+              --output audit/cleanup-service-methods.json
+          fi
+          rm -rf originals images source
+      - name: Upload metadata, not original Apple executable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch6-18-23u95-cleanup-xpc-static-audit
+          path: audit/
+          retention-days: 14
+          if-no-files-found: error
