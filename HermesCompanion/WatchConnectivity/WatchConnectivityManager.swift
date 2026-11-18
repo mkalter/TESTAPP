@@ -145,6 +145,20 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
             .joined()
     }
 
+    private static func matchingStoredBackup(
+        data: Data,
+        hash: String,
+        records: [BackupRecord]
+    ) -> BackupRecord? {
+        records.first { record in
+            guard record.sha256.caseInsensitiveCompare(hash) == .orderedSame,
+                  let url = try? backupURL(for: record.fileName) else {
+                return false
+            }
+            return (try? Data(contentsOf: url)) == data
+        }
+    }
+
     // MARK: - Manifest
 
     private static func saveManifest(
@@ -472,9 +486,8 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         }
         // Session activation can resend the same original backup. Reuse an
         // existing record only after confirming the stored bytes still match.
-        for record in try loadManifest() where record.sha256 == receivedHash {
-            let existingURL = try backupURL(for: record.fileName)
-            if (try? Data(contentsOf: existingURL)) == receivedData { return record }
+        if let existing = matchingStoredBackup(data: receivedData, hash: receivedHash, records: try loadManifest()) {
+            return existing
         }
         let directory = try backupDirectory()
 
@@ -574,10 +587,8 @@ final class WatchConnectivityManager: NSObject, ObservableObject {
         let importedHash = Self.sha256(data)
         let records = try Self.loadManifest()
 
-        // Reject any backup already present in the history.
-        guard !records.contains(where: {
-            $0.sha256.caseInsensitiveCompare(importedHash) == .orderedSame
-        }) else {
+        // A history entry can outlive its file. Accept a fresh copy in that case.
+        if Self.matchingStoredBackup(data: data, hash: importedHash, records: records) != nil {
             return .duplicate
         }
 
