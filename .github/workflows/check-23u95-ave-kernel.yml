@@ -1,0 +1,105 @@
+name: Verify AppleAVE2 on original Watch6,18 23U95 kernel (offline)
+
+on:
+  push:
+    branches:
+      - research/23u95-ave-kernel-driver-compat-20261118
+    paths:
+      - '.github/workflows/check-23u95-ave-kernel.yml'
+      - 'Research/firmware-23u95/ave-kernel-compat.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-kext-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+      IPSW_CLI_URL: https://github.com/blacktop/ipsw/releases/download/v3.1.749/ipsw_3.1.749_linux_x86_64.tar.gz
+      KERNEL_SHA256: ced56594d646bc39261c7f6d4cce8554accc9fd16cce6ec4aa70ad3d98f56261
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin parser build and original device
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output firmware /tmp/ipsw
+          echo 'Device Watch6,18 (Apple Watch Ultra 1)' > output/provenance.txt
+          echo 'Build 23U95 / watchOS 26.6.1' >> output/provenance.txt
+          echo 'Source: official Apple CDN IPSW, extraction only; no on-watch contact' >> output/provenance.txt
+          echo 'Tool: blacktop ipsw v3.1.749' >> output/provenance.txt
+          echo "Expected prior original kernel sha256: $KERNEL_SHA256" >> output/provenance.txt
+          curl -fL --retry 3 --retry-delay 4 --connect-timeout 20 \
+            "$IPSW_CLI_URL" -o /tmp/ipsw/cli.tar.gz
+          tar -xzf /tmp/ipsw/cli.tar.gz -C /tmp/ipsw
+          chmod +x /tmp/ipsw/ipsw
+          /tmp/ipsw/ipsw version > output/tool-version.txt 2>&1
+
+      - name: Fetch only matching original 23U95 kernelcache
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 1300 /tmp/ipsw/ipsw extract --kernel --remote \
+            --output "$PWD/firmware" "$IPSW_URL" > output/kernel-extraction.log 2>&1
+          KC="$(find firmware -type f -iname '*kernelcache*' | head -1)"
+          if [[ -z "$KC" ]]; then
+            echo "BLOCKED: matching kernelcache could not be extracted" > output/VERDICT.txt
+            exit 2
+          fi
+          echo "$KC" > output/kernel-source-path.txt
+          sha256sum "$KC" > output/kernel-sha256.txt
+          file "$KC" > output/kernel-file-type.txt
+          ACTUAL="$(sha256sum "$KC" | cut -d' ' -f1)"
+          if [[ "$ACTUAL" != "$KERNEL_SHA256" ]]; then
+            echo "BLOCKED: kernelcache digest differs from earlier original Watch6,18 23U95 extraction" > output/VERDICT.txt
+            echo "Expected $KERNEL_SHA256, received $ACTUAL" >> output/VERDICT.txt
+            exit 3
+          fi
+          echo "REPRODUCED: original kernelcache SHA256 matches prior 23U95 artifact" > output/VERDICT.txt
+          echo "$KC" > output/kernel-for-next-stage.txt
+
+      - name: Enumerate every kernel extension and AVE codec drivers
+        shell: bash
+        run: |
+          set -euo pipefail
+          KC="$(cat output/kernel-for-next-stage.txt)"
+          timeout 130 /tmp/ipsw/ipsw kernel kexts "$KC" \
+            > output/entire-kext-list.txt 2>&1
+          grep -Eai 'AppleAVE|AppleAVD|AVEVideoEncoder|AppleJPEG|VideoEncoder|AppleMCC|IOSurface|IOGPU' \
+            output/entire-kext-list.txt > output/relevant-driver-inventory.txt || true
+          if grep -Fq 'com.apple.driver.AppleAVE2' output/entire-kext-list.txt; then
+            echo 'APPLEAVE2_PRESENT in exact Watch6,18 / 23U95 kernel' >> output/VERDICT.txt
+            mkdir -p extracted
+            timeout 200 /tmp/ipsw/ipsw kernel extract "$KC" \
+              com.apple.driver.AppleAVE2 -o extracted > output/appleave2-extract.log 2>&1
+            DRIVER="$(find extracted -type f -iname '*AppleAVE2*' | head -1)"
+            if [[ -n "$DRIVER" ]]; then
+              sha256sum "$DRIVER" > output/appleave2-sha256.txt
+              file "$DRIVER" > output/appleave2-filetype.txt
+              strings -a -n 6 "$DRIVER" | grep -Eai \
+                'EncType mismatch|sEnc|eEncType|VideoEncoder|Session|bitrate|encoder' | head -n 180 \
+                > output/appleave2-relevant-strings.txt || true
+              if grep -Fq 'EncType mismatch with session' output/appleave2-relevant-strings.txt; then
+                echo 'ENC_TYPE_MISMATCH_STRING_PRESENT: may be consistent with newer guard (NOT security proof)' >> output/VERDICT.txt
+              else
+                echo 'ENC_TYPE_MISMATCH_STRING_ABSENT: investigate guard manually (NOT a vulnerability proof)' >> output/VERDICT.txt
+              fi
+            else
+              echo 'EXTRACTION_BLOCKED: AppleAVE2 kext was listed but not materialized' >> output/VERDICT.txt
+            fi
+          else
+            echo 'APPLEAVE2_NOT_LISTED on original Watch6,18 / 23U95 kernel. No AppleAVE2 kernel method on this fileset.' >> output/VERDICT.txt
+          fi
+          echo 'No kernel code executed on device, no IOKit method called.' >> output/VERDICT.txt
+
+      - name: Export provenance, text and cryptographic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch6-18-23u95-ave2-kernel-driver-inventory
+          path: output/
+          retention-days: 14
+          if-no-files-found: error
