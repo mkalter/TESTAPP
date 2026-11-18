@@ -103,6 +103,13 @@ jobs:
               --input "$TARGET" --sha256 "$EXPECTED" \
               --out audit/original-clockkit-symbol-call-trace.json \
               | tee audit/clockkit-symbol-call-summary.txt || echo 'LC_SYMTAB symbol route unavailable: record the actual error' > audit/symbol-limitation.txt
+            # Independent first-party device identity source and category
+            # mapping from the identical original ClockKit binary.
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$TARGET" --sha256 "$EXPECTED" --profile identity \
+              --out audit/original-clockkit-device-identity-call-trace.json \
+              | tee audit/clockkit-device-identity-summary.txt || \
+              echo 'Identity method mapping unavailable; cannot infer source of sizeClass' > audit/identity-limitation.txt
           fi
           # Independently inspect exact original NanoTimeKit face availability
           # from the SAME Watch6,18 dyld cache. No device interaction.
