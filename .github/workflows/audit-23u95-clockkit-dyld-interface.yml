@@ -104,6 +104,24 @@ jobs:
               --out audit/original-clockkit-symbol-call-trace.json \
               | tee audit/clockkit-symbol-call-summary.txt || echo 'LC_SYMTAB symbol route unavailable: record the actual error' > audit/symbol-limitation.txt
           fi
+          # Independently inspect exact original NanoTimeKit face availability
+          # from the SAME Watch6,18 dyld cache. No device interaction.
+          timeout 300 /tmp/ipswcli/ipsw dyld extract "$CACHE" \
+             '/System/Library/PrivateFrameworks/NanoTimeKit.framework/NanoTimeKit' \
+             -o "$PWD/extracted" > audit/nanotimekit-export-log.txt 2>&1 || \
+             echo "NanoTimeKit export unavailable; no codeflow claims" > audit/nanotimekit-limitation.txt
+          NTK="$(find extracted -type f -name NanoTimeKit | head -1)"
+          if [[ -n "$NTK" ]]; then
+            NTK_SHA="$(sha256sum "$NTK" | cut -d' ' -f1)"
+            echo "$NTK_SHA" > audit/original-nanotimekit-sha256.txt
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$NTK" --sha256 "$NTK_SHA" --profile availability \
+              --out audit/original-nanotimekit-face-availability-IMP-trace.json \
+              | tee audit/nanotimekit-availability-summary.txt || \
+              echo "No original NTK availability methods verified; don't infer missing" > audit/nanotimekit-limitation.txt
+          else
+            echo "NanoTimeKit not extracted from original 23U95 dyld; unavailable" > audit/nanotimekit-limitation.txt
+          fi
           echo 'Mach service and selector existence are not proof of client RPC acceptance or native Hermès install.' > audit/limitations.txt
           rm -rf extracted cache
       - name: Publish only validated original watchOS selector and provenance reports
