@@ -7,6 +7,7 @@ on:
       - '.github/workflows/audit-23u95-tccd-path-authority.yml'
       - 'Research/firmware-23u95/audit_tccd_fat_slice.py'
       - 'Research/firmware-23u95/recover_arm64_32_objc_lists.py'
+      - 'Research/firmware-23u95/disassemble_tccd_method_paths.py'
   workflow_dispatch:
 
 permissions:
@@ -76,6 +77,15 @@ jobs:
              --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
              --output audit/tccd-relative-objc-IMP-map.json \
              | tee audit/objc-method-validation-summary.txt
+          # Execute only after method names and original IMP offsets have
+          # been independently validated against the source SHA.
+          python3 -m venv /tmp/tccd-python
+          /tmp/tccd-python/bin/pip -q install 'capstone>=5,<6'
+          /tmp/tccd-python/bin/python Research/firmware-23u95/disassemble_tccd_method_paths.py \
+             --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
+             --method-map audit/tccd-relative-objc-IMP-map.json \
+             --output audit/tccd-verified-bounded-method-disassembly.json \
+             | tee audit/tccd-method-summary.txt
           echo 'No XPC call, path operation or Apple system-file mutation on any device.' > audit/limitations.txt
           rm -f tccd-original tccd-arm-slice
           rm -rf originals
