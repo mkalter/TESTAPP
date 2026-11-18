@@ -42,6 +42,10 @@ assert 'st.st_uid == geteuid()' in objc
 assert 'T5 · TCC / Software Update' in swift
 assert 'T6 · Apple-daemonrechten' in swift
 assert 'T7 · ClockKit-validatie' in swift
+assert 'T8 · Positieve Apple-controle' in swift
+assert 'BQRunClockKitAvailabilityDifferential' in headers
+assert 'BQRunClockKitAvailabilityDifferential()' in swift
+assert '"clockkit-availability-differential.txt"' in transport
 assert 'BQRunClockKitReadOnlyFaceValidation' in headers and 'BQRunClockKitReadOnlyFaceValidation()' in swift
 assert '"clockkit-readonly-face-validation.txt"' in transport
 t7 = (root / "HermesEnabler2/BQClockKitReadonlyValidation.m").read_text()
@@ -58,6 +62,16 @@ assert 'it DOES NOT elevate our app' in t7
 assert 'BQCKRequestValidation(connection,' in t7
 assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
+assert 'BQCKKnownAvailableStandardFace' in t7
+assert 'NTKFaceDescriptor' in t7 and 'CLKDevice' in t7
+assert 'isAvailableForDevice:' in t7
+assert 'style<44' in t7
+assert 'POSITIVE CONTROL PASS' in t7
+assert 'SKIPPED Hermès comparisons because server/device availability contexts disagree' in t7
+assert 'BQCKRequestValidation(connection,validType,@"")' in t7
+assert 'clockkit-availability-differential.txt' in t7
+assert '0x1000' in t7
+assert 'BQRunClockKitAvailabilityDifferential()' not in swift.split("private func runAll()",1)[1]
 assert '"clockkit-readonly-face-validation.txt"' in t7
 assert '"com.apple.ClockKit.CLKWatchFaceLibrary"' in t7
 # T7 may only call Apple's *validator*. It is a separate opt-in, never in the
@@ -92,7 +106,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six no-RPC watchOS probes plus one explicitly opt-in read-only ClockKit validator")
+print("PASS: six no-RPC watchOS probes plus T7/T8 separately opt-in read-only ClockKit validations")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
