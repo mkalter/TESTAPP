@@ -64,6 +64,10 @@ assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
 assert 'BQCKKnownAvailableStandardFace' in t7
 assert 'NTKFaceDescriptor' in t7 and 'CLKDevice' in t7
+assert 'BQCKLocalBundleAvailability' in t7
+assert 'initWithBundleIdentifier:' in t7
+assert 'LOCAL native Zeus availability:' in t7
+assert 'LOCAL native Hermès2025 availability:' in t7
 assert 'isAvailableForDevice:' in t7
 assert 'style<44' in t7
 assert 'POSITIVE CONTROL PASS' in t7
