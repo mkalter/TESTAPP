@@ -1,0 +1,87 @@
+name: Compare 27 original TCC/SoftwareUpdate daemon fixes without unavailable shared cache
+
+on:
+  push:
+    branches:
+      - research/23u95-vs27-tcc-update-validation-diff-20261118
+    paths:
+      - '.github/workflows/compare-watchos27-daemons-reuse-26.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  daemon-patch-diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/072-91688/0E703D1E-7453-4DD0-94FF-E83842DF7040/Watch7%2C5_27.0_24R364_Restore.ipsw
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse validated Watch7,5 26.6 original metadata, don't reextract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p baseline audit patched originals
+          gh run download 44254805883 -R mkalter/TESTAPP \
+            -n watch75-26-vs27-metadata-26 -D baseline
+          test -s baseline/metadata.json
+          python3 - <<'PY'
+          import json
+          src=json.load(open('baseline/metadata.json'))
+          src['binaries']={k:v for k,v in src['binaries'].items() if k in ('tccd','softwareupdated')}
+          assert len(src['binaries'])==2
+          json.dump(src,open('baseline/daemons-only.json','w'),indent=2)
+          print('Reuse original Watch7,5 26.6 TCC/softwareupdated SHA metadata')
+          PY
+      - name: Clone parser and compile ranged APFS extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          git -C /tmp/ipsw-src rev-parse HEAD > audit/ipsw-source-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Extract only 27 daemon executables from matching Watch model
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 730 go build -o /tmp/ipsw ./cmd/ipsw)
+          /tmp/ipsw version > audit/tool-version.txt 2>&1
+          PATTERN='^/System/Library/PrivateFrameworks/(TCC\.framework/Support/tccd|MobileSoftwareUpdate\.framework/Support/softwareupdated)$'
+          echo "$PATTERN" > audit/pattern.txt
+          timeout 980 /tmp/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/originals" "$FW_URL" \
+            > audit/extraction.log 2>&1
+          for name in tccd softwareupdated; do
+            source="$(find originals -type f -name "$name" | head -1)"
+            test -n "$source"
+            cp "$source" "patched/$name"
+            file "$source" >> audit/source-file-architecture.txt
+          done
+      - name: Compare exact original 26 and 27 daemon method sizes and changed strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/summarize_tcc_update_macho.py \
+            --input patched --version 'Watch7,5 watchOS27.0 build24R364' \
+            --output audit/watch27-daemons.json
+          python3 Research/firmware-23u95/diff_tcc_update_metadata.py \
+            --old baseline/daemons-only.json --new audit/watch27-daemons.json \
+            --output audit/changed-daemon-validation.json \
+            > audit/compare-summary.log
+          test -s audit/changed-daemon-validation.json
+          rm -rf patched originals
+      - name: Export offline audit (metadata only, no Apple executables)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: same-watch75-26-27-tcc-softwareupdated-daemon-diff
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
