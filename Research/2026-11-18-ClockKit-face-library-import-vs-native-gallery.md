@@ -136,3 +136,54 @@ This is an *availability preflight*, not a privileged face insertion
 or a cache-write method. Source:
 https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/e26ed4563f78871c59d2d96856756a65d62517e5/System/Library/PrivateFrameworks/NanoTimeKit.framework/NTKGreenfieldUtilities.m .
 The original watchOS implementation is not yet independently traced.
+
+
+## Original 23U95 binary definitively recovered from genuine ARM64_32 dyld
+
+[Verified original Watch6,18 / 23U95 run #44270583446](https://github.com/mkalter/TESTAPP/actions/runs/44270583446)
+**SUCCESS**. SHA-256 of the extracted original
+`/System/Library/Frameworks/ClockKit.framework/ClockKit` is:
+
+`225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad`
+
+A separate standalone executable did not exist in the APFS file inventory,
+but the original dyld cache did contain and export the matching `ClockKit`
+image. This resolves the prior standalone-path uncertainty.
+
+Concrete original binary indicator counts:
+- `CLKWatchFaceLibrary`: 80;
+- `CLKWatchFaceLibraryServer`: 35;
+- `CLKWatchFaceLibraryServerInterface`: 11;
+- `CLKCompanionWatchFaceLibraryService`: 6;
+- `validateFaceType:faceBundleId:completionHandler:`: 5;
+- `openWatchFaceURLWithSecurityScopedURL:`: 6;
+- `addWatchFaceAtURL:`: 9;
+- `face.json`: 3;
+- `com.apple.ClockKit.CLKWatchFaceLibrary`: 1.
+- `NTKDCollectionStore`, `_queue_addFace:forUUID:`, `_resetWithFaces:`:
+  **no matching string** in the original exported ClockKit executable.
+
+These are independently verified **binary strings**, not yet proof of exact
+watchOS XPC protocol implementation. They align closely with the two-method
+iOS 26 importer protocol and point away from native Apple collection-store
+write authority in this particular service. A genuine native system face
+still requires passing independent NanoTimeKit class restrictions, actual
+Apple library persistence and Carousel rendering.
+
+## New T7 unsigned iPhone + Watch build passed
+
+[GitHub Actions #44270806397](https://github.com/mkalter/TESTAPP/actions/runs/44270806397)
+**SUCCESS**, uploaded `unsigned-iphone-watch-ipa` artifact ID
+`14411579760`. The code includes the separate opt-in button
+`T7 · ClockKit-validatie` and the report
+`clockkit-readonly-face-validation.txt`. Six original no-RPC diagnostics
+remain separately runnable and in the six-test batch.
+
+The first T7 code revision failed compilation because the public watchOS
+SDK declares `-[NSXPCConnection initWithServiceName:]` unavailable; this
+was corrected with a *checked, dynamically resolved runtime IMP*. If that
+method is truly absent at runtime, T7 reports UNKNOWN and does not attempt
+to call it. No private entitlement is added by this mechanism and the test
+can still fail at the remote method-authority gate.
+
+No persistent original Hermès face was inserted and no protected file changed.
