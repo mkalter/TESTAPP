@@ -98,7 +98,7 @@ def debug_first_entries(b,sec):
     for pos in range(0,region["size"]-20,4):
         header=region["file"]+pos
         flags=u32(b,header);count=u32(b,header+4)
-        if flags!=0x8000000c or not (1<=count<=64):continue
+        if (flags&0x80000000)==0 or (flags&0xfffc)!=12 or not (1<=count<=64):continue
         e=region["file"]+pos+8
         vm=region["vm"]+pos+8
         namevm=vm+i32(b,e)
@@ -106,7 +106,8 @@ def debug_first_entries(b,sec):
         impvm=vm+8+i32(b,e+8)
         seloff,selsec=source_offset(sec,namevm,4)
         selvalue=u32(b,seloff) if seloff is not None else None
-        rows=dict(list_vm=hex(region["vm"]+pos),count=count,
+        rows=dict(list_vm=hex(region["vm"]+pos),flags=hex(flags),
+            uses_direct_selectors=bool(flags&0x40000000),count=count,
             name_entry_vm=hex(namevm),name_section=selsec["name"] if selsec else None,
             raw_selref_word=hex(selvalue) if selvalue is not None else None,
             direct_name_read=readname(b,sec,namevm),
