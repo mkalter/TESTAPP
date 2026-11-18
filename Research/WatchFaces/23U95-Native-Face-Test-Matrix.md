@@ -58,3 +58,16 @@ De nieuwe, **geïsoleerde** `Native Face Lab` is rechtstreeks vanuit de Watch UI
 - Succes pas wanneer een originele Hermès FaceBundle in Apples eigen systeemgalerij op de Watch verschijnt, zonder een draaiende helper, ook na opnieuw selecteren/herstart.
 
 **Huidige status:** T1–T4 zijn in code geïmplementeerd en worden door GitHub Actions gecompileerd; er zijn nog **geen fysieke Watch-logresultaten** van deze vier tests. Spoor T5–T10 is doelbewust nog niet als risicovolle device-write uitgevoerd.
+
+
+## 18 november: T5 TCC / Software Update — nieuwe fysieke meetproef
+
+De originele 23U95 firmware en de oorspronkelijke watchOS 26→27 TCC-binaryvergelijking in `Research/2026-11-18-original-tcc-patch-delta.md` wijzen op nieuwe TCC-pad- en containercontroles in 27. Dit is **geen bewezen CVE-entrypoint**. Test daarom eerst uitsluitend **T5**, rechtstreeks op de Watch in het **Native Face Lab**:
+
+- App-proces: `uid/euid/gid/egid`.
+- Voor de exacte door launchd gebruikte namen `com.apple.tccd`, `com.apple.mobile.softwareupdated` plus MG/ClockKit-controles: `sandbox_check(mach-lookup)`. Er worden geen XPC-berichten of RPC's verstuurd.
+- `lstat` voor de bestaande MobileGestalt-plist: bestandstype, mode, `st_uid`, `st_gid`, grootte; **geen wijziging of write-open**.
+- `sandbox_check(file-write-data)` voor diezelfde plist, alleen preflight; geen schrijftest.
+- Rapport `protected-writer-service-gate.txt` gaat via WatchConnectivity naar de iPhone, zoals de andere rapporten.
+
+**Beslisboom:** Mach DENY voor TCC/Software Update betekent dat een normale Watch-app niet rechtstreeks met die dienst kan spreken; ALLOW bewijst alleen dat de sandbox deze *naam* niet blokkeert, niet dat het serviceverzoek toegestaan is. `st_uid==geteuid` maakt de POSIX-eigendom plausibel, maar heft de kernel-sandbox niet op. Er bestaat nog **geen** bewijs voor een misbruikbare path-traversal-RPC of native Hermès-ontgrendeling. Zoek pas na relevante toegang naar gedocumenteerde en begrensde autorisatiecontroles; ga niet blind Apple-systeembestanden muteren.
