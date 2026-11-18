@@ -71,3 +71,44 @@ De originele 23U95 firmware en de oorspronkelijke watchOS 26→27 TCC-binaryverg
 - Rapport `protected-writer-service-gate.txt` gaat via WatchConnectivity naar de iPhone, zoals de andere rapporten.
 
 **Beslisboom:** Mach DENY voor TCC/Software Update betekent dat een normale Watch-app niet rechtstreeks met die dienst kan spreken; ALLOW bewijst alleen dat de sandbox deze *naam* niet blokkeert, niet dat het serviceverzoek toegestaan is. `st_uid==geteuid` maakt de POSIX-eigendom plausibel, maar heft de kernel-sandbox niet op. Er bestaat nog **geen** bewijs voor een misbruikbare path-traversal-RPC of native Hermès-ontgrendeling. Zoek pas na relevante toegang naar gedocumenteerde en begrensde autorisatiecontroles; ga niet blind Apple-systeembestanden muteren.
+
+
+## 18 november: werkelijke Watch6,18 T5 + T2 uitslag (fysiek gemeten)
+
+Bron: rechtstreeks door gebruiker gedeelde Native Face Lab rapporten, Watch6,18 / watchOS `23U95`, 18 november 2026 07:31–07:32 UTC. Hier staan uitsluitend niet-destructieve metingen; geen protected write of Hermès-activatie.
+
+**T5 — effectieve app sandbox versus POSIX:**
+
+| Dienst/controle | Waarde |
+|---|---|
+| app UID/EUID/GID/EGID | `501/501/501/501` |
+| MobileGestalt cache | bestaand regulier bestand, `0644`, `uid=501 gid=501`, `13325` bytes |
+| `st_uid == geteuid` | **YES**; POSIX is niet de directe blokkade |
+| `sandbox_check(file-write-data, MG)` | **DENY (1)**; kernel-sandbox blijft directe blokkade |
+| `mach-lookup com.apple.tccd` | ALLOW (preflight) |
+| `mach-lookup com.apple.mobile.softwareupdated` | DENY (1) |
+| `mach-lookup com.apple.mobilegestalt.xpc` | ALLOW (preflight) |
+| `mach-lookup com.apple.ClockKit.CLKWatchFaceLibrary` | ALLOW (preflight) |
+
+**T2 — echte bootstrap naamresolutie vanaf dezelfde Watch-app:**
+
+| Diensten | `bootstrap_look_up` |
+|---|---|
+| `com.apple.tccd` | `kr=0`, send right verkregen |
+| `com.apple.mobilegestalt.xpc` | `kr=0`, send right verkregen |
+| `com.apple.ClockKit.CLKWatchFaceLibrary` | `kr=0`, send right verkregen |
+| `com.apple.NanoTimeKit.complication` | `kr=0`, send right verkregen |
+| `com.apple.mobile.softwareupdated` | `kr=1100` (**BOOTSTRAP_NOT_PRIVILEGED**) |
+| negen native gallery/library/store/replication/Carousel-servicenamen | `kr=1100` (**BOOTSTRAP_NOT_PRIVILEGED**) |
+
+**Belangrijk: `1100 != 1102`.** In de Apple/launchd bootstrap-headers: `BOOTSTRAP_NOT_PRIVILEGED=1100`; `BOOTSTRAP_UNKNOWN_SERVICE=1102`. Dus de negatieve resultaten betekenen *autorisatiefout*, niet simpelweg *dienst ontbreekt*. Zie https://github.com/theos/headers/blob/master/bootstrap.h .
+
+### Nieuwe conclusie en technische prioriteit
+
+1. **TCC:** gebruikersproces kan naam resolven en Mach send right verkrijgen. Een werkelijke XPC-RPC, diens audit-token/entitlementvalidatie en vooral **toegang van de TCC-daemon zelf tot de MobileGestalt-SystemGroup** zijn *niet* bewezen. Eerdere originele `tccd` sandboxprofielanalyse zag schrijfrechten voor TCC-specifieke opslag, niet voor MG. De TCC-watchOS27-binarydelta is bewijs voor gewijzigde padbehandeling, maar **geen aan de CVE gekoppelde exploit**.
+2. **MobileGestaltHelper:** ook werkelijk bereikbaar qua Mach port; bestaand onderzoek meldde error 9 bij read/query-paden en heeft geen geverifieerd geautoriseerd writer-protocol ontdekt. Vermijd dezelfde mislukte XPC-aanroepen zonder nieuw bewijs.
+3. **Software Update en rechtstreekse NanoTimeKit-brokers:** vanuit deze app *niet* via geteste bootstrapnamen bereikbaar (`1100`); andere alias/service naam niet zonder firmwarebewijs verzinnen.
+4. **POSIX:** eigendom `501` is gunstiger dan gedacht, maar maakt geen systeemcontainer schrijfbaar. Rechtstreekse MG-writes blijven `EPERM` onder effectief sandboxbeleid.
+5. **Volgende offline onderzoek:** valideer in originele exact passende TCC/MobileGestaltHelper code de concrete client-entitlement- en padrestricties en meet veilig eerst documenteerde read-only operaties. Geen beschermd bestand muteren op basis van `bootstrap_look_up=0` alleen.
+
+Nieuwe Watch UI toont nu ook tekst voor elke Mach bootstrap-returncode; deze wijziging beïnvloedt uitsluitend de logweergave.
