@@ -135,3 +135,23 @@ UNKNOWN: proc_listallpids list failed=1 (Operation not permitted)
 **TCC-route herprioritering**: fysieke `bootstrap_look_up(com.apple.tccd)=0` betekent bereikbaarheid. De in originele TCC disassembly gevonden `registerNewDBAtPath:` leidt naar interne `evalDB:locked:bind:step:` SQL-updates, geen bewezen bestaande-binaire-plist-writer. Noch servicebereikbaarheid, noch een padstring heft de daemon-sandbox op.
 
 **Nieuwe betere kandidaat**: `com.apple.mobilegestalt.xpc` was fysiek op T2 bereikbaar; het originele `MobileGestaltHelper` executable bevat `com.apple.private.security.storage.MobileGestaltCache` en `com.apple.security.system-groups`/doelgroepstrings. Een **werkelijke XML/DER code-signing entitlement decode** is nodig voordat deze strings als cryptografisch gecontroleerde rechten gelden. Zijn bekende XPC-methoden `rebuildCache:` en `setCacheSentinel:` accepteren geen geverifieerde arbitrarily-controlled plist bytes; cache rebuild kan destructief zijn. Geen device-call naar die routes zonder herstelproof.
+
+
+### 18 november — originele getekende entitlement (niet slechts Mach-O-strings)
+
+[GitHub Actions #44266845679](https://github.com/mkalter/TESTAPP/actions/runs/44266845679) sloot af met **SUCCESS**. De workflow haalde `/usr/libexec/MobileGestaltHelper` uit de originele Watch6,18 / 23U95 Apple IPSW en verifieerde exact SHA256 `0e0c05244a3d35753e948783372f18e615ae2032cf7b750dd7a9cc57cfb3626e`.
+
+Een nieuwe parser las daadwerkelijk `LC_CODE_SIGNATURE` op fileoffset `54736` lengte `21376`, de big-endian Apple `CSMAGIC_EMBEDDED_SIGNATURE` SuperBlob, met:
+- `CSSLOT_ENTITLEMENTS=5`, magic `0xfade7171`, XML-Entitlements: **exact één geldig plist-dictionary**;
+- `CSSLOT_DER_ENTITLEMENTS=7`, magic `0xfade7172`: DER-entitlementblob **aanwezig** (inhoud niet apart gedecodeerd);
+- `com.apple.private.security.storage.MobileGestaltCache: true`;
+- `com.apple.security.system-groups:` **[`systemgroup.com.apple.mobilegestaltcache`, `systemgroup.com.apple.mobileactivationd`]**;
+- `com.apple.security.system-group-containers` niet in de XML-dict.
+
+De original launchd manifest is onafhankelijk herlezen: `com.apple.mobilegestalt.xpc` -> `/usr/libexec/MobileGestaltHelper`, process identity `mobile` of feature-flag-dependent `_mobilegestalthelper`. Fysiek T2: `bootstrap_look_up` voor deze service **kr=0, port received**.
+
+**Interpretatie**: deze rechten zijn niet louter tekststrings; ze staan daadwerkelijk in de embedded code-signature entitlement-slot van een hashgeverifieerde originele Apple-binary. Dat bevestigt dat deze helper is ingericht voor toegang tot de beschermde MG SystemGroup. Het is nog geen runtime audit van de Apple-handtekeningketen, sandbox tokenconsumptie of effectieve write-open. **Een Mach-port + getekende helper-entitlement bewijst absoluut geen willekeurige client-writer.**
+
+De publieke methodenamen die in dezelfde originele helperbinary worden gevonden zijn `rebuildCache:` en `setCacheSentinel:`. Volgens de gepubliceerde firmwareanalyse kan cache-rebuild de bestaande cache unlinken alvorens regeneratie; sentinel schrijft vaste inhoud naar de sentinelpad. Geen `DeviceBrand`/plisthoudende setter is aangetoond. Daarom **nooit deze muterende helper-API als alleen-leesconnectiviteitstest gebruiken**.
+
+De aanvullende [offline helper-XPC-IMP-map #44267247147](https://github.com/mkalter/TESTAPP/actions/runs/44267247147) onderzoekt de implementaties en autorisatiebranch zonder de dienst aan te roepen.
