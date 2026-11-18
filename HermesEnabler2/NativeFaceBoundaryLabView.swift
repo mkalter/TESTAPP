@@ -10,7 +10,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T1 · Mach-beleid", "Welke originele Apple-wijzerplaatdiensten staat de sandbox toe?"),
         ("T2 · Bootstrap-lookup", "Kunnen we de dienstnaam vinden, zonder XPC-berichten te sturen?"),
         ("T3 · Systeemopslag", "Bestaan de NanoTimeKit-mappen en welke lees-/schrijfrechten meldt het OS?"),
-        ("T4 · Originele FaceBundles", "Zijn Zeus/Hermès2025-bundels op de Watch via het bestandssysteem zichtbaar?")
+        ("T4 · Originele FaceBundles", "Zijn Zeus/Hermès2025-bundels op de Watch via het bestandssysteem zichtbaar?"),
+        ("T5 · TCC / Software Update", "Controleren welke diensten bereikbaar lijken en wie MobileGestalt bezit.")
     ]
 
     var body: some View {
@@ -33,7 +34,7 @@ struct NativeFaceBoundaryLabView: View {
                     }
                 }
 
-                Button("Alle 4 lezen en meten") { runAll() }
+                Button("Alle 5 lezen en meten") { runAll() }
                     .buttonStyle(.bordered)
                     .disabled(isRunning)
 
@@ -62,6 +63,9 @@ struct NativeFaceBoundaryLabView: View {
             case 2:
                 name = "native-face-store-policy.txt"
                 output = BQRunNativeFaceStorePolicy() as String
+            case 4:
+                name = "protected-writer-service-gate.txt"
+                output = BQRunProtectedWriterServiceGate() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
@@ -84,7 +88,8 @@ struct NativeFaceBoundaryLabView: View {
                 ("native-face-mach-policy.txt", BQRunNativeFaceMachPolicy() as String),
                 ("native-face-bootstrap-lookup.txt", BQRunNativeFaceBootstrapLookup() as String),
                 ("native-face-store-policy.txt", BQRunNativeFaceStorePolicy() as String),
-                ("native-face-bundle-inventory.txt", BQRunNativeFaceBundleInventory() as String)
+                ("native-face-bundle-inventory.txt", BQRunNativeFaceBundleInventory() as String),
+                ("protected-writer-service-gate.txt", BQRunProtectedWriterServiceGate() as String)
             ]
             for (name, text) in results {
                 _ = await WatchConnectivityManager.shared.sendDiagnosticReport(name: name, text: text)
