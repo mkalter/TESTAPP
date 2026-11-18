@@ -399,3 +399,125 @@ NSString *BQRunClockKitAvailabilityDifferential(void) {
     [lines addObject:@"No original face inserted or protected file modified."];
     return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
 }
+
+
+/**
+ * T9 · Local Apple FaceBundle manager migration lookup differential.
+ *
+ * Exact original Watch6,18 23U95 NanoTimeKit
+ * -[NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:forMigration:]
+ * uses x4 to decide whether to call isRestrictedForDevice:. This is NOT
+ * an authorized native face-library writer and must never be described so.
+ *
+ * The manager may load and cache signed Apple bundles IN THE CALLING PROCESS.
+ * No store, sync, Carousel or protected file mutation is requested.
+ */
+static NSString *BQCKBundleObjectSummary(id bundle, id device) {
+    if (!bundle) return @"NIL (no usable FaceBundle object)";
+    SEL getFace=NSSelectorFromString(@"faceClass");
+    if (![bundle respondsToSelector:getFace])
+        return @"NONNIL (faceClass selector unavailable; not a face activation)";
+    @try {
+        typedef Class (*GetClass)(id,SEL);
+        IMP get=[bundle methodForSelector:getFace];
+        if (!get) return @"NONNIL (faceClass implementation unavailable)";
+        Class face=((GetClass)get)(bundle,getFace);
+        if (!face) return @"NONNIL (faceClass=nil; not a usable renderable face)";
+        NSString *name=NSStringFromClass(face) ?: @"unnamed";
+        SEL restriction=NSSelectorFromString(@"isRestrictedForDevice:");
+        Method method=class_getClassMethod(face,restriction);
+        if (!method)
+            return [NSString stringWithFormat:@"NONNIL faceClass=%@ restriction=UNKNOWN (no class method)",name];
+        typedef BOOL (*IsRestricted)(Class,SEL,id);
+        BOOL restricted=((IsRestricted)method_getImplementation(method))(face,restriction,device);
+        return [NSString stringWithFormat:
+                @"NONNIL faceClass=%@ isRestrictedForDevice:%@",
+                name,restricted?@"YES":@"NO"];
+    } @catch (NSException *e) {
+        return [NSString stringWithFormat:
+                 @"NONNIL faceClass inspection exception %@",e.name];
+    }
+}
+
+NSString *BQRunClockKitMigrationLookupDifferential(void) {
+    NSMutableArray<NSString *> *lines=[NSMutableArray arrayWithObjects:
+        @"=== Native Face Boundary Lab · T9: original FaceBundle migration lookup differential ===",
+        [NSString stringWithFormat:@"Time=%@; machine=%@; OSbuild=%@",
+         NSDate.date,BQCKRunName(@"hw.machine"),BQCKRunName(@"kern.osversion")],
+        [NSString stringWithFormat:@"App=%@",NSBundle.mainBundle.bundleIdentifier?:@"unknown"],
+        @"Opt-in LOCAL NanoTimeKit FaceBundle lookup. No XPC, FaceStore, library migration, import or protected write.",
+        @"The original manager may load/cache Apple bundle metadata only inside THIS process.",
+        @"A nonnil migration result would NOT enable or install a native Hermès face.",nil];
+    // Force actual signed original framework to be loaded before private class lookup.
+    NSString *type=BQCKFaceTypeForStyle(44);
+    [lines addObject:[NSString stringWithFormat:@"Original runtime face style44=%@",type?:@"unavailable"]];
+    if (![type isEqualToString:@"bundle"]) {
+        [lines addObject:@"SKIPPED: no original bundle style; no guessed selector calls."];
+        return BQCKWriteOwnReportNamed(lines,@"clockkit-migration-local-differential.txt");
+    }
+    Class managerClass=NSClassFromString(@"NTKFaceBundleManager");
+    Class deviceClass=NSClassFromString(@"CLKDevice");
+    SEL sharedSel=NSSelectorFromString(@"sharedManager");
+    SEL deviceSel=NSSelectorFromString(@"currentDevice");
+    SEL migrateSel=NSSelectorFromString(@"faceBundleForBundleIdentifier:onDevice:forMigration:");
+    Method shared=managerClass?class_getClassMethod(managerClass,sharedSel):NULL;
+    Method current=deviceClass?class_getClassMethod(deviceClass,deviceSel):NULL;
+    Method mig=managerClass?class_getInstanceMethod(managerClass,migrateSel):NULL;
+    [lines addObject:[NSString stringWithFormat:
+        @"Runtime manager=%@ device=%@ sharedManager=%@ currentDevice=%@ forMigration selector=%@",
+        managerClass?@"present":@"absent",deviceClass?@"present":@"absent",
+        shared?@"present":@"absent",current?@"present":@"absent",
+        mig?@"present":@"absent"]];
+    if (!shared || !current || !mig) {
+        [lines addObject:@"UNKNOWN: required original getter missing; no speculative method calls."];
+        return BQCKWriteOwnReportNamed(lines,@"clockkit-migration-local-differential.txt");
+    }
+    @try {
+        typedef id (*ClassGetter)(id,SEL);
+        typedef id (*BundleLookup)(id,SEL,NSString *,id,BOOL);
+        id device=((ClassGetter)method_getImplementation(current))(deviceClass,deviceSel);
+        id manager=((ClassGetter)method_getImplementation(shared))(managerClass,sharedSel);
+        if (!device || !manager) {
+            [lines addObject:@"UNKNOWN: manager or currentDevice nil; no lookup attempted."];
+            return BQCKWriteOwnReportNamed(lines,@"clockkit-migration-local-differential.txt");
+        }
+        BundleLookup lookup=(BundleLookup)method_getImplementation(mig);
+        NSArray<NSArray<NSString *> *> *targets=@[
+            @[@"Zeus/Poodle",
+              @"/System/Library/NanoTimeKit/FaceBundles/NTKZeusFaceBundle.bundle"],
+            @[@"Hermès2025",
+              @"/System/Library/NanoTimeKit/FaceBundles/NTKHermes2025FaceBundle.bundle"]
+        ];
+        for (NSArray<NSString *> *target in targets) {
+            NSString *identifier=BQCKSignedBundleIdentifier(target[1]);
+            if (!identifier.length) {
+                [lines addObject:[NSString stringWithFormat:
+                     @"SKIPPED %@ (actual on-device Info.plist unavailable)",target[0]]];
+                continue;
+            }
+            [lines addObject:[NSString stringWithFormat:
+                @"TARGET %@ real Apple bundle ID=%@",target[0],identifier]];
+            id normal=lookup(manager,migrateSel,identifier,device,NO);
+            [lines addObject:[@"NORMAL forMigration=NO: " stringByAppendingString:
+                BQCKBundleObjectSummary(normal,device)]];
+            id migration=lookup(manager,migrateSel,identifier,device,YES);
+            [lines addObject:[@"MIGRATION forMigration=YES: " stringByAppendingString:
+                BQCKBundleObjectSummary(migration,device)]];
+            id normalAgain=lookup(manager,migrateSel,identifier,device,NO);
+            [lines addObject:[@"RECHECK NORMAL forMigration=NO: " stringByAppendingString:
+                BQCKBundleObjectSummary(normalAgain,device)]];
+            if (!normal && migration) {
+                [lines addObject:@"DIFFERENTIAL: migration lookup returns FaceBundle where ordinary lookup does not."];
+            } else if (!normal && !migration) {
+                [lines addObject:@"NO BYPASS OBSERVED: neither local lookup resolves a FaceBundle in this process."];
+            } else {
+                [lines addObject:@"NO INFERRED UNLOCK: inspect normal/migration results independently."];
+            }
+        }
+    } @catch(NSException *e) {
+        [lines addObject:[NSString stringWithFormat:
+            @"UNKNOWN: local Apple method threw %@ %@",e.name,e.reason?:@""]];
+    }
+    [lines addObject:@"No native FaceStore/Carousel mutation, FaceBundle import, sync, reboot or protected file write requested."];
+    return BQCKWriteOwnReportNamed(lines,@"clockkit-migration-local-differential.txt");
+}
