@@ -3,11 +3,13 @@
 **These are real published Apple security vulnerabilities, not a tested native Hermès unlock.**
 The CVE version ranges include watchOS 26.6.1 and have fixes in watchOS 27; Apple Watch Ultra 1 cannot upgrade to watchOS 27.
 
+**Correction verified against Apple's original security advisory:** watchOS 27 lists CVE-2026-86886 under **TCC**, not DataAccess. The earlier project note mislabelled its affected component and misprioritized the sandbox profile to inspect. Source: https://support.apple.com/en-us/149037 (TCC section).
+
 ## Two independent vulnerabilities not covered by MCM/CFPrefs probe history
 
 | CVE | watchOS 27 vendor category | Advisory effect and fix | Current proof |
 |---|---|---|---|
-| [CVE-2026-86886](https://cve.circl.lu/vuln/CVE-2026-86886) | **DataAccess** (iOS lists TCC) | Path traversal / inadequate input validation; app may modify protected system files; fixed watchOS 27 | The affected-version claim is official; no public 23U95 exploitation or MobileGestalt write verified |
+| [CVE-2026-86886](https://cve.circl.lu/vuln/CVE-2026-86886) | **TCC** (Apple's watchOS 27 advisory) | Path traversal / inadequate input validation; app may modify protected system files; fixed watchOS 27 | The affected-version claim is official; no public 23U95 exploitation or MobileGestalt write verified |
 | [CVE-2026-84609](https://cve.circl.lu/vuln/CVE-2026-84609) | **Software Update** | Insufficient path validation; app may modify protected system files; fixed watchOS 27 | The affected-version claim is official; no public 23U95 exploitation or MobileGestalt write verified |
 | [CVE-2026-86876](https://cve.circl.lu/vuln/CVE-2026-86876) | **CoreMedia** | Out-of-bounds write may enable sandbox escape; fixed watchOS 27 | Not a ready file-writer and may provide no extra POSIX permissions |
 
@@ -21,9 +23,9 @@ Original Apple kernelcache SHA-256: `ced56594d646bc39261c7f6d4cce8554accc9fd16cc
 This SHA matches the previously independently extracted original 23U95 kernelcache.
 
 Decompiled profiles present and authenticated:
-- `dataaccessd`: 1682 lines. Explicit destination writes to home-based DataAccess, Mail, Notes, Calendar, carrier caches, and `/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles`; **NOT** an explicit unconditional grant for sibling `systemgroup.com.apple.mobilegestaltcache`. A published vulnerable **path traversal** in its API is not proof it can reach that different SystemGroup through the kernel sandbox.
+- `com.apple.tccd`: 529 lines. Original exact-watchOS policy shows explicit writes to its own `~/Library/TCC`, CompanionSync logs, and temporary directories; **NOT** an explicit unconditional grant for `systemgroup.com.apple.mobilegestaltcache`. The CVE affects **TCC**, not DataAccess. A path traversal in TCC is not proof it bypasses the kernel sandbox for the MobileGestalt target.
 - `softwareupdated`: 571 lines. Explicit `file-write*` includes `/private/var/MobileSoftwareUpdate`, `/private/var/db/UpdateMetrics`, `/private/var/tmp` and own caches; **NO** unconditional write grant on the protected MobileGestalt SystemGroup.
-- `com.apple.tccd`: 529 lines. Explicit own `/Library/TCC` write entries, temporary areas and entitlement/extension-gated additional paths, not an established direct MG writer.
+- `dataaccessd` was inspected in the earlier run but is **not** the affected component for CVE-2026-86886. Its old analysis must not be used as evidence for the TCC CVE.
 - `cfprefsd`: already separately investigated; original 23U95 CoreFoundation writer works for authorized preferences, and `validateMessage` invokes POSIX and sandbox checks.
 
 **Important distinction:** The CVEs say a protected file could be modified somewhere. They do **not** establish that an app can choose the **exact already-existing** MobileGestalt plist as destination, or that a normal development-signed Watch app can exercise the vulnerable IPC selector. A deliberate delete/rename race against protected MG is unjustified without a demonstrated reversible writing primitive.
