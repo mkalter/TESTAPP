@@ -521,3 +521,83 @@ NSString *BQRunClockKitMigrationLookupDifferential(void) {
     [lines addObject:@"No native FaceStore/Carousel mutation, FaceBundle import, sync, reboot or protected file write requested."];
     return BQCKWriteOwnReportNamed(lines,@"clockkit-migration-local-differential.txt");
 }
+
+
+/**
+ * T10 — exact current CLKDevice identity attributes, read-only.
+ *
+ * Original 23U95 Hermes2025 eligibility uses deviceCategory whitelist
+ * {2,3,5} before later collectionType=5 test. The same-build ClockKit
+ * loader derives deviceCategory from sizeClass separately from DeviceBrand.
+ * This checks the actual live getters without modifying MG/CLKDevice.
+ */
+NSString *BQRunOriginalHermes2025IdentityGates(void) {
+    NSMutableArray<NSString *> *lines=[NSMutableArray arrayWithObjects:
+      @"=== Native Face Boundary Lab · T10: original Hermes2025 identity gate ===",
+      [NSString stringWithFormat:@"Time=%@; model=%@; build=%@",
+       NSDate.date,BQCKRunName(@"hw.machine"),BQCKRunName(@"kern.osversion")],
+      @"Read-only Apple CLKDevice getters; no MobileGestalt, FaceStore or system mutation.",
+      @"Original 23U95 Hermes2025 deviceCategory whitelist={2,3,5}; collectionType=5 is later gate.",
+      @"DeviceBrand=1 alone may change collectionType but does NOT necessarily change sizeClass/deviceCategory.",nil];
+    (void)BQCKFaceTypeForStyle(44); // Load original watchOS NanoTimeKit image.
+    Class deviceClass=NSClassFromString(@"CLKDevice");
+    SEL current=NSSelectorFromString(@"currentDevice");
+    Method currentMethod=deviceClass?class_getClassMethod(deviceClass,current):NULL;
+    if (!currentMethod) {
+       [lines addObject:@"UNKNOWN: original CLKDevice currentDevice unavailable."];
+       return BQCKWriteOwnReportNamed(lines,@"hermes2025-live-identity-gates.txt");
+    }
+    typedef id (*CurrentGetter)(id,SEL);
+    id device=((CurrentGetter)method_getImplementation(currentMethod))(deviceClass,current);
+    if (!device) {
+       [lines addObject:@"UNKNOWN: currentDevice=nil."];
+       return BQCKWriteOwnReportNamed(lines,@"hermes2025-live-identity-gates.txt");
+    }
+    NSArray<NSString *> *names=@[
+      @"sizeClass",@"deviceCategory",@"deviceBrand",
+      @"collectionType",@"isUltra",@"supportsFall2025FacesCapability"
+    ];
+    NSMutableDictionary<NSString *,NSNumber *> *values=[NSMutableDictionary dictionary];
+    for (NSString *key in names) {
+        SEL selector=NSSelectorFromString(key);
+        Method method=class_getInstanceMethod(object_getClass(device),selector);
+        if (!method) {
+           [lines addObject:[NSString stringWithFormat:@"%@=UNKNOWN (getter not present)",key]];
+           continue;
+        }
+        @try {
+           typedef unsigned long long (*ReadScalar)(id,SEL);
+           unsigned long long raw=((ReadScalar)method_getImplementation(method))(device,selector);
+           values[key]=@(raw);
+           [lines addObject:[NSString stringWithFormat:@"%@=%llu (read-only, actual CLKDevice)",
+                              key,raw]];
+        } @catch (NSException *e) {
+           [lines addObject:[NSString stringWithFormat:@"%@=UNKNOWN exception=%@",key,e.name]];
+        }
+    }
+    NSNumber *category=values[@"deviceCategory"];
+    NSNumber *collection=values[@"collectionType"];
+    NSNumber *brand=values[@"deviceBrand"];
+    if (category) {
+        BOOL categoryAllowed=category.unsignedIntegerValue==2 ||
+            category.unsignedIntegerValue==3 || category.unsignedIntegerValue==5;
+        [lines addObject:categoryAllowed ?
+          @"Hermes2025 category whitelist={2,3,5}: PASS for current device." :
+          @"Hermes2025 category whitelist={2,3,5}: FAIL for current device."];
+        if (!categoryAllowed) {
+           [lines addObject:@"DEDUCTION: Changing DeviceBrand alone does not change the sizeClass-derived category under the ORIGINAL 23U95 ClockKit loader. Another gate remains."];
+        }
+    } else {
+       [lines addObject:@"UNKNOWN: cannot evaluate original category gate without getter."];
+    }
+    if (collection) {
+        [lines addObject:collection.unsignedIntegerValue==5 ?
+           @"Hermes2025 collectionType=5 gate: CURRENTLY MATCHES." :
+           @"Hermes2025 collectionType=5 gate: CURRENTLY DOES NOT MATCH."];
+    }
+    if (brand) [lines addObject:[NSString stringWithFormat:
+       @"Current CLKDevice brand=%@; do not confuse this with changing the protected MG cache.",
+       brand]];
+    [lines addObject:@"No native face was added, reset, imported or made persistent."];
+    return BQCKWriteOwnReportNamed(lines,@"hermes2025-live-identity-gates.txt");
+}
