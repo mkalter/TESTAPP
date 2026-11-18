@@ -1,0 +1,134 @@
+name: Compare same Watch7,5 watchOS 26-27 TCC and update writer paths
+on:
+  push:
+    branches:
+      - research/23u95-vs27-tcc-update-validation-diff-20261118
+    paths:
+      - '.github/workflows/compare-watchos26-27-tcc-update-implementations.yml'
+      - 'Research/firmware-23u95/summarize_tcc_update_macho.py'
+      - 'Research/firmware-23u95/diff_tcc_update_metadata.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '26'
+            firmware_url: https://updates.cdn-apple.com/2026SummerFCS/fullrestores/122-17334/1593CB6A-3FF0-4BD0-8C2D-B37A6164C78B/Watch7%2C5_26.6_23U67_Restore.ipsw
+            version_label: 'Watch7,5 watchOS26.6 build23U67'
+          - version: '27'
+            firmware_url: https://updates.cdn-apple.com/2026FallFCS/fullrestores/072-91688/0E703D1E-7453-4DD0-94FF-E83842DF7040/Watch7%2C5_27.0_24R364_Restore.ipsw
+            version_label: 'Watch7,5 watchOS27.0 build24R364'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone original firmware tool and record provenance
+        shell: bash
+        env:
+          FIRMWARE_URL: ${{ matrix.firmware_url }}
+          VERSION_LABEL: ${{ matrix.version_label }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ipsw-cli original cache images inventory
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > inventory/parser-commit.txt
+          printf '%s\n' "$VERSION_LABEL" "$FIRMWARE_URL" > inventory/provenance.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Compile read-only ranged firmware tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 750 go build -o /tmp/ipsw-cli/ipsw ./cmd/ipsw)
+          /tmp/ipsw-cli/ipsw version > inventory/parser-version.txt 2>&1
+      - name: Extract original TCC and SoftwareUpdate executables
+        shell: bash
+        env:
+          FIRMWARE_URL: ${{ matrix.firmware_url }}
+        run: |
+          set -euo pipefail
+          PATTERN='^/(System/Library/PrivateFrameworks/(TCC\.framework/Support/tccd|MobileSoftwareUpdate\.framework/Support/softwareupdated)|System/Library/LaunchDaemons/com\.apple\.(tccd|mobile\.softwareupdated)\.plist)$'
+          timeout 850 /tmp/ipsw-cli/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/original" "$FIRMWARE_URL" \
+            > inventory/userland-extract.log 2>&1
+          for name in tccd softwareupdated; do
+            src="$(find original -type f -name "$name" | head -1)"
+            if [[ -n "$src" ]]; then cp "$src" "images/$name"; fi
+          done
+          find original -type f -printf '%p %s bytes\n' > inventory/original-files.txt
+      - name: Extract same-model original dyld cache and TCC/SoftwareUpdate frameworks
+        shell: bash
+        env:
+          FIRMWARE_URL: ${{ matrix.firmware_url }}
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32(\.[^/]+)?$'
+          timeout 900 /tmp/ipsw-cli/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/cache" "$FIRMWARE_URL" \
+            > inventory/dyld-extract.log 2>&1
+          DSC="$(find cache -type f -name dyld_shared_cache_arm64_32 | head -1)"
+          if [[ -z "$DSC" ]]; then echo "No original ARM64_32 cache" > inventory/BLOCKED.txt; exit 3; fi
+          sha256sum "$DSC" > inventory/original-dyld-cache-sha256.txt
+          for name in TCC SoftwareUpdateCore MobileSoftwareUpdate; do
+            mkdir -p "cache/$name"
+            if timeout 150 /tmp/ipsw-cli/ipsw dyld extract "$DSC" "$name" \
+                -o "cache/$name" > "inventory/$name-extract.log" 2>&1; then
+              src="$(find "cache/$name" -type f -name "$name" | head -1)"
+              if [[ -n "$src" ]]; then cp "$src" "images/$name"; fi
+            fi
+          done
+          test -f images/TCC
+          test -f images/SoftwareUpdateCore
+      - name: Extract original symbol metadata without distributing Apple binaries
+        shell: bash
+        env:
+          VERSION_LABEL: ${{ matrix.version_label }}
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/summarize_tcc_update_macho.py \
+            --input images --version "$VERSION_LABEL" --output inventory/metadata.json
+          test -s inventory/metadata.json
+          rm -rf images original cache
+      - name: Upload metadata and SHA digests only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch75-26-vs27-metadata-${{ matrix.version }}
+          path: inventory/
+          retention-days: 10
+          if-no-files-found: error
+
+  compare:
+    needs: extract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: watch75-26-vs27-metadata-*
+          path: original-versions
+      - name: Compare exact same-hardware TCC and update methods
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p conclusions
+          python3 Research/firmware-23u95/diff_tcc_update_metadata.py \
+            --old original-versions/watch75-26-vs27-metadata-26/metadata.json \
+            --new original-versions/watch75-26-vs27-metadata-27/metadata.json \
+            --output conclusions/same-watch-tcc-update-method-diff.json \
+            | tee conclusions/summary.txt
+          test -s conclusions/same-watch-tcc-update-method-diff.json
+          echo 'Static patch diff only: no CVE exploit or MobileGestalt write demonstrated.' >> conclusions/summary.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: original-watch75-26-27-tcc-update-patch-evidence
+          path: conclusions/
+          retention-days: 14
