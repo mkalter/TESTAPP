@@ -62,3 +62,77 @@ say *NOT FOUND in standalone filesystem* rather than claim absence from watchOS.
   error handling; no mutating library reset or protected file calls.
 - No use of fake `.watchface` ZIPs as evidence of authentic native
   FaceBundle enablement; no actual native watchface unlock has occurred.
+
+
+## Genuine Watch6,18 / 23U95 original filesystem result
+
+[Apple IPSW extraction run #44269491459](https://github.com/mkalter/TESTAPP/actions/runs/44269491459)
+**SUCCESS** (three real, hash-pinned original Info.plists):
+
+| Original installed source path | Verified CFBundleIdentifier | Plist SHA256 |
+|---|---|---|
+| `System/Library/Frameworks/ClockKit.framework/Info.plist` | `com.apple.ClockKit` | `9f560897edc43607fd03618dd255cba5f470fd54d7ebbb0ee087274b6aba8afd` |
+| `System/Library/NanoTimeKit/FaceBundles/NTKZeusFaceBundle.bundle/Info.plist` | `com.apple.NTKZeusFaceBundle` | `aee1ca3ce7961975c63f1c99c2bcd6ebd1ee328ee88113035a468c1639ff5894` |
+| `System/Library/NanoTimeKit/FaceBundles/NTKHermes2025FaceBundle.bundle/Info.plist` | `com.apple.Hermes2025Face` | `6b3f66dd9e8c662886e089a7c36ee56fe6281c548f508c99e87d3313b1468b7f` |
+
+**Important discovery:** Hermès 2025's real bundle identifier is
+`com.apple.Hermes2025Face`, **not** the filename
+`NTKHermes2025FaceBundle`. This now enables proper targeted read-only
+validation without guessed IDs.
+
+The ClockKit framework's Info.plist is standalone, but **no standalone
+ClockKit Mach-O or ClockKit .xpc executable** matched the original
+filesystem paths in the same scan. This is NOT evidence the executable
+doesn't exist; shared libraries can be resident in original ARM64_32
+dyld shared caches. The new [original dyld-only scan #44270583446](https://github.com/mkalter/TESTAPP/actions/runs/44270583446)
+tests exactly that, without touching the physical Watch.
+
+## New optional physical T7 — read-only ClockKit XPC validator
+
+A new `BQRunClockKitReadOnlyFaceValidation` in
+`HermesEnabler2/BQClockKitReadonlyValidation.m` is exposed as a **single
+separate opt-in** `T7 · ClockKit-validatie` button (not in "Alle 6 lezen en
+meten"). Uses `NSXPCInterface` with **only**
+`validateFaceType:faceBundleId:completionHandler:`. It attempts:
+- One intentionally invalid face type control to distinguish method/proxy
+  accessibility from native eligibility;
+- Only when `NTKFaceBundleStringFromFaceStyle(44)` exists in the actual
+  Watch's loaded NanoTimeKit, uses the actual style string (no guesses);
+- Only when original FaceBundle `Info.plist` is present and readable on
+  the *actual Watch*, validates `com.apple.NTKZeusFaceBundle` and/or
+  `com.apple.Hermes2025Face`; otherwise safely SKIP native checks.
+
+The operation is **read-only validation**: no `.watchface` resource
+opened, no `openWatchFaceURL`, no native library add/reset, no
+MobileGestalt modification. Includes 5-second bounded waits for each
+request and iPhone-transferred own Documents report
+`clockkit-readonly-face-validation.txt`.
+
+**SDK limitation discovered during actual CI:** `NSXPCConnection
+initWithServiceName:` is declared unavailable in watchOS. A naive
+source-level call failed compile. The new version checks the actual
+runtime instance selector/IMP before attempting the initializer; absence
+returns UNKNOWN, avoiding reliance on an unsupported ABI.
+
+**Interpretation**:
+- A server error or timeout for deliberately invalid control does not
+  show why Hermès is denied.
+- Even a successful Hermès validation is **not** proof that the original
+  signed face can be displayed in the stock gallery or persist.
+- This test is not a request to bypass Apple's code signing, entitlement
+  enforcement or protection of device identity.
+
+### Why a successful XPC validation would still have limited value
+
+An independently decompiled real iOS 18.2
+`NTKGreenfieldUtilities.validateFaceType:faceBundleId:`:
+1. Converts `face type` string to a numerical style via
+   `NTKFaceBundleGetFaceStyleFromString`.
+2. For style `44` specifically uses `initWithBundleIdentifier:`; other
+   styles use `initWithFaceStyle:`.
+3. Calls `NTKFaceDescriptor.isAvailableForDevice:` on the current device.
+
+This is an *availability preflight*, not a privileged face insertion
+or a cache-write method. Source:
+https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/e26ed4563f78871c59d2d96856756a65d62517e5/System/Library/PrivateFrameworks/NanoTimeKit.framework/NTKGreenfieldUtilities.m .
+The original watchOS implementation is not yet independently traced.
