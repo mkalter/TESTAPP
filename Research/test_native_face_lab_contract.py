@@ -64,6 +64,14 @@ assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
 assert 'BQCKKnownAvailableStandardFace' in t7
 assert 'NTKFaceDescriptor' in t7 and 'CLKDevice' in t7
+assert 'T10 · Hermès 2025-apparaatcontrole' in swift
+assert 'BQRunOriginalHermes2025IdentityGates' in headers
+assert 'BQRunOriginalHermes2025IdentityGates()' in swift
+assert '"hermes2025-live-identity-gates.txt"' in transport
+assert 'BQRunOriginalHermes2025IdentityGates()' not in swift.split("private func runAll()",1)[1]
+assert 'Hermes2025 category whitelist={2,3,5}' in t7
+assert '@"deviceCategory"' in t7 and '@"collectionType"' in t7 and '@"deviceBrand"' in t7
+assert 'No native face was added, reset, imported or made persistent.' in t7
 assert 'T9 · Migratie-lookup' in swift
 assert 'BQRunClockKitMigrationLookupDifferential' in headers
 assert 'BQRunClockKitMigrationLookupDifferential()' in swift
@@ -120,7 +128,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six baseline probes, T7/T8 XPC validation and separate T9 local migration lookup")
+print("PASS: six baseline probes, T7/T8 validator and separate T9/T10 local read-only identity probes")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
