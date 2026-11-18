@@ -271,6 +271,38 @@ static NSDictionary<NSString *,id> *BQCKKnownAvailableStandardFace(
     return nil;
 }
 
+// Mirror the read-only bundle branch of NTKFaceDescriptor.isAvailableForDevice:
+// for style=44, a bundle folder alone is insufficient; NanoTimeKit must
+// actually resolve a compatible first-party FaceBundle for this CLKDevice.
+static NSString *BQCKLocalBundleAvailability(NSString *bundleID) {
+    if (!bundleID.length) return @"UNKNOWN (no real bundle identifier)";
+    Class descriptorClass=NSClassFromString(@"NTKFaceDescriptor");
+    Class deviceClass=NSClassFromString(@"CLKDevice");
+    if (!descriptorClass || !deviceClass) return @"UNKNOWN (Apple class unavailable)";
+    SEL current=NSSelectorFromString(@"currentDevice");
+    SEL create=NSSelectorFromString(@"initWithBundleIdentifier:");
+    SEL query=NSSelectorFromString(@"isAvailableForDevice:");
+    Method cm=class_getClassMethod(deviceClass,current);
+    Method im=class_getInstanceMethod(descriptorClass,create);
+    Method qm=class_getInstanceMethod(descriptorClass,query);
+    if (!cm || !im || !qm) return @"UNKNOWN (Apple getter unavailable)";
+    @try {
+        typedef id (*Current)(id,SEL);
+        typedef id (*Create)(id,SEL,NSString *);
+        typedef BOOL (*Query)(id,SEL,id);
+        id device=((Current)method_getImplementation(cm))(deviceClass,current);
+        if (!device) return @"UNKNOWN (CLKDevice currentDevice nil)";
+        id descriptor=((Create)method_getImplementation(im))(
+            [descriptorClass alloc],create,bundleID);
+        if (!descriptor) return @"UNKNOWN (NTKFaceDescriptor init nil)";
+        BOOL result=((Query)method_getImplementation(qm))(descriptor,query,device);
+        return result ? @"AVAILABLE (local descriptor)" : @"NOT AVAILABLE (local descriptor)";
+    } @catch(NSException *exception) {
+        return [NSString stringWithFormat:@"UNKNOWN (local descriptor exception %@)",
+                 exception.name];
+    }
+}
+
 NSString *BQRunClockKitAvailabilityDifferential(void) {
     NSMutableArray<NSString *> *lines=[NSMutableArray arrayWithObjects:
         @"=== Native Face Boundary Lab · T8: native availability differential ===",
@@ -289,6 +321,12 @@ NSString *BQRunClockKitAvailabilityDifferential(void) {
     [lines addObject:[NSString stringWithFormat:
         @"Original native style44=%@ Zeus ID=%@ Hermès2025 ID=%@",
         style44 ?: @"unavailable", zeus ?: @"unavailable",hermes ?: @"unavailable"]];
+    if ([style44 isEqualToString:@"bundle"]) {
+        [lines addObject:[NSString stringWithFormat:
+            @"LOCAL native Zeus availability: %@",BQCKLocalBundleAvailability(zeus)]];
+        [lines addObject:[NSString stringWithFormat:
+            @"LOCAL native Hermès2025 availability: %@",BQCKLocalBundleAvailability(hermes)]];
+    }
     if (!positive) {
         [lines addObject:@"SKIPPED remote differential: no VERIFIED locally available standard control."];
         return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
