@@ -99,7 +99,7 @@ Bron: rechtstreeks door gebruiker gedeelde Native Face Lab rapporten, Watch6,18 
 | `com.apple.ClockKit.CLKWatchFaceLibrary` | `kr=0`, send right verkregen |
 | `com.apple.NanoTimeKit.complication` | `kr=0`, send right verkregen |
 | `com.apple.mobile.softwareupdated` | `kr=1100` (**BOOTSTRAP_NOT_PRIVILEGED**) |
-| negen native gallery/library/store/replication/Carousel-servicenamen | `kr=1100` (**BOOTSTRAP_NOT_PRIVILEGED**) |
+| acht native gallery/library/store/replication/Carousel-servicenamen | `kr=1100` (**BOOTSTRAP_NOT_PRIVILEGED**) |
 
 **Belangrijk: `1100 != 1102`.** In de Apple/launchd bootstrap-headers: `BOOTSTRAP_NOT_PRIVILEGED=1100`; `BOOTSTRAP_UNKNOWN_SERVICE=1102`. Dus de negatieve resultaten betekenen *autorisatiefout*, niet simpelweg *dienst ontbreekt*. Zie https://github.com/theos/headers/blob/master/bootstrap.h .
 
