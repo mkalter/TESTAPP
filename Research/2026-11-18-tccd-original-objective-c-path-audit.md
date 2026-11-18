@@ -108,3 +108,49 @@ constant rather than accepting a path. The registry method still takes a
 string argument; its caller and the object ultimately being updated must be
 traced before considering a safe app-owned test. No current evidence that
 `registerNewDBAtPath:` writes arbitrary existing binary plists.
+
+
+## 18 November — resolved registry selector, revised assessment
+
+[Exact original 23U95 selector-call trace #44264152563](https://github.com/mkalter/TESTAPP/actions/runs/44264152563)
+completed successfully, verifying **133 original ObjC selector call-sites in
+25 selected methods**.
+
+The actual `registerNewDBAtPath:` implementation at `0x718c` preserves
+its method `x2` path argument but dispatches at `0x7224` to original
+selector stub `0x63860`, decoded as:
+
+```
+-[... registerNewDBAtPath:] -> evalDB:locked:bind:step:
+```
+
+This is an **internal TCC SQL database evaluation/bind path**, not an
+identified arbitrary file-write or protected-system-file writer. The
+caller-controlled path, where allowed, appears to be registered inside TCC's
+database; the selector is **not** evidence the path is itself the destination
+of a write. More investigation of a specific real vulnerability would require
+its accepted IPC interface and daemon sandbox destination rights. The separate
+`getMigratedDBDir` selector chain invokes `stateDirectory`,
+`getMigratedDBRelativeDirPath`, `stringByAppendingPathComponent:` and
+`UTF8String`. The getter is a fixed image-relative value, not an independent
+client-selected path.
+
+### New non-destructive T6 on real Watch
+
+`BQRunTrustedDaemonPolicyDifferential` is installed on the experiment branch,
+shown as **T6 · Apple-daemonrechten** within the native Watch Face Lab.
+It attempts `proc_listallpids` / `proc_name` from the user Watch app,
+only for visible Apple `tccd`, `softwareupdated`, `MobileGestalt*`
+processes. If name visibility permits, it calls
+`sandbox_check(pid, "file-write-data", SANDBOX_FILTER_PATH, MG path)`
+for the **daemon's effective process sandbox**. It logs ALLOW/DENY/UNKNOWN
+and exits. If watchOS denies enumeration or cross-PID inspection, this is
+`UNKNOWN`, **not** evidence that TCC can or cannot write. No XPC
+request, process injection, root entitlement, sandbox extension or protected
+file mutation is attempted. A daemon's `ALLOW` would still not establish
+an authorized remote write API.
+
+The offline source regression contract for six Watch labs passed in
+[GitHub Actions #44264840267](https://github.com/mkalter/TESTAPP/actions/runs/44264840267).
+The iPhone+Watch unsigned build is separately checked in
+[GitHub Actions #44264801111](https://github.com/mkalter/TESTAPP/actions/runs/44264801111).
