@@ -312,8 +312,10 @@ NSString *BQRunClockKitAvailabilityDifferential(void) {
         @"Only Apple's original read-only ClockKit validateFaceType:faceBundleId:completionHandler: XPC.",
         @"One local NTKFaceDescriptor isAvailableForDevice positive control selected from real currentDevice.",
         @"No native face import, library insertion, protected writing or device spoofing.",nil];
-    NSDictionary<NSString *,id> *positive=BQCKKnownAvailableStandardFace(lines);
+    // Explicitly load Apple's NanoTimeKit image BEFORE resolving its
+    // Objective-C runtime classes, including NTKFaceDescriptor.
     NSString *style44=BQCKFaceTypeForStyle(44);
+    NSDictionary<NSString *,id> *positive=BQCKKnownAvailableStandardFace(lines);
     NSString *zeus=BQCKSignedBundleIdentifier(
         @"/System/Library/NanoTimeKit/FaceBundles/NTKZeusFaceBundle.bundle");
     NSString *hermes=BQCKSignedBundleIdentifier(
