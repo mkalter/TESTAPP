@@ -1,0 +1,68 @@
+name: Verify watchOS 23U95 ClockKit face-library service vs native store
+
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - '.github/workflows/audit-23u95-clockkit-face-library-service.yml'
+      - 'Research/firmware-23u95/audit_clockkit_facelib_files.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-clockkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      APPLE_IPSW: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare matching original 23U95 Apple file extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit original
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          git -C /tmp/ipsw-src rev-parse HEAD > audit/extractor-source-sha.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Build APFS ranged extraction tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 800 go build -o /tmp/ipsw ./cmd/ipsw)
+          /tmp/ipsw version > audit/extractor-version.txt 2>&1
+      - name: Extract only original ClockKit and native FaceBundle metadata candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/(System/Library/Frameworks/ClockKit\.framework/(ClockKit|Info\.plist|XPCServices/[^/]+\.xpc/([^/]+|Info\.plist))|System/Library/LaunchDaemons/[^/]*(ClockKit|CLKWatchFaceLibrary)[^/]*\.plist|System/Library/NanoTimeKit/FaceBundles/(NTKZeusFaceBundle|NTKHermes2025FaceBundle)\.bundle/Info\.plist)$'
+          echo "$PATTERN" > audit/extraction-pattern.txt
+          timeout 1000 /tmp/ipsw extract --remote --files --ranged \
+            --pattern "$PATTERN" --output "$PWD/original" "$APPLE_IPSW" \
+            > audit/extraction.log 2>&1 || echo "ranged-extract-exit=$?" >> audit/extraction-status.txt
+          find original -type f -printf '%p %s bytes\n' | sort > audit/extracted-files.txt
+          cat audit/extracted-files.txt
+          test -s audit/extracted-files.txt || echo 'No ClockKit path found standalone; may exist in dyld shared cache' > audit/files-not-found-limitation.txt
+      - name: Inspect exact source hashes, server names and read-only selectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/audit_clockkit_facelib_files.py \
+            --root original --output audit/clockkit-watchos23u95-static.json \
+            | tee audit/clockkit-summary.txt
+          echo 'Static framework/XPC metadata only; NO XPC calls, protected writes, or system-face operations.' > audit/safety.txt
+          rm -rf original
+      - name: Archive reports only (never Apple code/binary)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch6-18-23u95-clockkit-watchface-library-protocol-audit
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
