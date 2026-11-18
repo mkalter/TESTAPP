@@ -58,6 +58,16 @@ jobs:
              --input tccd-original --expected-sha256 "$EXPECTED_SHA" \
              --thin tccd-arm-slice --output audit/tccd-path-selector-candidates.json
           file tccd-arm-slice > audit/selected-architecture.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('audit/tccd-path-selector-candidates.json'))
+          rows=d.get('matching_strings',[])
+          markers=('validate','path','directory','legacy','sandbox','entitle','container','cleanup','migrat','database')
+          print('SOURCE HASH',d['original_sha256'],'ARCH',d['architecture'])
+          print('SELECTED PATH/AUTH CANDIDATES:')
+          for row in [x for x in rows if any(k in x.lower() for k in markers)][:120]:
+              print(row[:180])
+          PY
           python3 Research/firmware-23u95/objc_arm64_32_methods.py tccd-arm-slice \
              > audit/objc-method-candidates.txt 2>&1 || \
              echo 'Objective-C method walker unsupported for this slice; strings-only candidate report' > audit/objc-method-limitation.txt
