@@ -152,6 +152,91 @@ NSString *BQRunProtectedWriterServiceGate(void) {
     return NFBFinish(lines, @"protected-writer-service-gate.txt");
 }
 
+
+/**
+ * T6: optional read-only effective policy differential for Apple daemon PIDs.
+ * Discovery and sandbox_check may be denied; UNKNOWN is an expected outcome.
+ * No XPC, no cross-process handle, no protected file write-open or mutation.
+ */
+NSString *BQRunTrustedDaemonPolicyDifferential(void) {
+    NSMutableArray<NSString *> *lines = NFBStart(@"T6: effective Apple daemon policy");
+    [lines addObject:@"Only runtime process names and sandbox_check(pid, path) preflight."];
+    [lines addObject:@"No entitlement acquisition, XPC, file open or protected modification."];
+    typedef int (*ListPidsFn)(void *, int);
+    typedef int (*ProcNameFn)(int, void *, uint32_t);
+    ListPidsFn list = (ListPidsFn)dlsym(RTLD_DEFAULT, "proc_listallpids");
+    ProcNameFn procName = (ProcNameFn)dlsym(RTLD_DEFAULT, "proc_name");
+    void *procLib = NULL;
+    if (!list || !procName) {
+        procLib = dlopen("/usr/lib/libproc.dylib", RTLD_LAZY | RTLD_LOCAL);
+        if (procLib) {
+            if (!list) list = (ListPidsFn)dlsym(procLib, "proc_listallpids");
+            if (!procName) procName = (ProcNameFn)dlsym(procLib, "proc_name");
+        }
+    }
+    if (!list || !procName) {
+        [lines addObject:@"UNKNOWN: libproc process-list API unavailable on this Watch."];
+        if (procLib) dlclose(procLib);
+        return NFBFinish(lines, @"trusted-daemon-policy-differential.txt");
+    }
+    errno = 0;
+    int expected = list(NULL, 0);
+    if (expected <= 0) {
+        [lines addObject:[NSString stringWithFormat:@"UNKNOWN: proc_listallpids list failed=%@",
+                          NFBError(errno)]];
+        if (procLib) dlclose(procLib);
+        return NFBFinish(lines, @"trusted-daemon-policy-differential.txt");
+    }
+    NSUInteger capacity = MIN((NSUInteger)4096, (NSUInteger)expected + 64);
+    NSMutableData *buffer = [NSMutableData dataWithLength:capacity * sizeof(pid_t)];
+    errno = 0;
+    int count = list(buffer.mutableBytes, (int)buffer.length);
+    if (count <= 0) {
+        [lines addObject:[NSString stringWithFormat:@"UNKNOWN: pid enumeration denied=%@",
+                          NFBError(errno)]];
+        if (procLib) dlclose(procLib);
+        return NFBFinish(lines, @"trusted-daemon-policy-differential.txt");
+    }
+    NFBSandboxCheck check = NFBCheckFunction();
+    NSString *path = BQMobileGestaltPath();
+    [lines addObject:[NSString stringWithFormat:@"Enumerated=%d; inspect up to %lu PIDs; path=%@",
+                      count, (unsigned long)capacity, path]];
+    NSUInteger matches = 0;
+    pid_t *pids = (pid_t *)buffer.mutableBytes;
+    for (NSUInteger i = 0; i < MIN((NSUInteger)count, capacity); i++) {
+        pid_t pid = pids[i];
+        if (pid <= 0 || pid == getpid()) continue;
+        char process[128] = {0};
+        if (procName(pid, process, sizeof(process)) <= 0) continue;
+        NSString *name = [NSString stringWithUTF8String:process] ?: @"";
+        if (![name isEqualToString:@"tccd"] &&
+            ![name isEqualToString:@"softwareupdated"] &&
+            ![name hasPrefix:@"MobileGestalt"]) continue;
+        // Re-check process name immediately before querying to limit PID-reuse confusion.
+        char before[128] = {0};
+        if (procName(pid, before, sizeof(before)) <= 0 ||
+            strcmp(before, process) != 0) continue;
+        NSString *value = @"UNKNOWN: sandbox_check export missing";
+        if (check) {
+            errno = 0;
+            int status = check(pid, "file-write-data", NFBFilterPath, path.fileSystemRepresentation);
+            if (status == 0) value = @"ALLOW (preflight only; not a write proof)";
+            else if (status > 0) value = [NSString stringWithFormat:@"DENY (%d)", status];
+            else value = [@"UNKNOWN: remote sandbox_check failed " stringByAppendingString:NFBError(errno)];
+        }
+        char after[128] = {0};
+        if (procName(pid, after, sizeof(after)) <= 0 ||
+            strcmp(after, process) != 0) value = @"UNKNOWN (process changed during observation)";
+        [lines addObject:[NSString stringWithFormat:@"[%@ pid=%d] MG file-write-data=%@",
+                          name, pid, value]];
+        matches++;
+    }
+    if (!matches) [lines addObject:@"UNKNOWN: no matching Apple daemons visible in this app namespace."];
+    [lines addObject:@"A remote-process policy answer does not establish any usable XPC writer method."];
+    if (procLib) dlclose(procLib);
+    return NFBFinish(lines, @"trusted-daemon-policy-differential.txt");
+}
+
 NSString *BQRunNativeFaceMachPolicy(void) {
     NSMutableArray<NSString *> *lines = NFBStart(@"T1: mach-lookup sandbox preflight");
     NFBSandboxCheck check = NFBCheckFunction();
