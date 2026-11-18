@@ -19,6 +19,13 @@ INTEREST=(
     "CLKWatchFaceLibrary _importWatchFaceAtURL:",
     "CLKWatchFaceLibrary addWatchFaceAtURL:",
 )
+AVAILABILITY_INTEREST=(
+    "NTKGreenfieldUtilities validateFaceType:faceBundleId:",
+    "NTKFaceDescriptor isAvailableForDevice:",
+    "NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:",
+    "NTKFaceBundleManager faceBundleForBundleIdentifier:",
+    "NTKFaceStyleIsAvailable",
+)
 def u32(b,p):return struct.unpack_from("<I",b,p)[0]
 def macho_symbols(b):
     pos=28
@@ -53,13 +60,15 @@ def main():
     p.add_argument("--input",required=True)
     p.add_argument("--sha256",required=True)
     p.add_argument("--out",required=True)
+    p.add_argument("--profile",choices=("clockkit","availability"),default="clockkit")
     a=p.parse_args()
     b=Path(a.input).read_bytes()
     digest=hashlib.sha256(b).hexdigest()
-    if digest!=a.sha256.lower():raise ValueError("Different original ClockKit SHA")
+    if digest!=a.sha256.lower():raise ValueError("Different original Apple framework SHA")
     tab,symbols=macho_symbols(b)
     sect=sections(b)
-    target=[m for m in symbols if any(t in m["name"] for t in INTEREST)]
+    patterns=INTEREST if a.profile=="clockkit" else AVAILABILITY_INTEREST
+    target=[m for m in symbols if any(t in m["name"] for t in patterns)]
     symbol_names_by_vm={}
     for symbol in symbols:
         symbol_names_by_vm.setdefault(symbol["vm"],[]).append(symbol["name"])
@@ -91,13 +100,13 @@ def main():
             calls.append(row)
         result.append(dict(name=m["name"],imp=hex(addr),instruction_count=len(ins),
                            bounded_instructions=ins,calls=calls))
-    out=dict(sha256=digest,symtab=dict(symoff=tab[0],nsyms=tab[1],
+    out=dict(sha256=digest,profile=a.profile,symtab=dict(symoff=tab[0],nsyms=tab[1],
           stroff=tab[2],strsize=tab[3]),total_parsed_symbols=len(symbols),
           matching_target_symbol_names=len(target),
           disassembled_target_functions=len(result),functions=result,
           caveat="Symbol-code correlation only; no native Hermes unlock or accepted RPC verified")
     Path(a.out).write_text(json.dumps(out,indent=2)+"\n")
-    print("ORIGINAL WATCH CLOCKKIT SHA",digest,"SYMBOLS",len(symbols),
+    print("ORIGINAL WATCH",a.profile,"SHA",digest,"SYMBOLS",len(symbols),
           "METHOD SYMBOLS",len(target),"VERIFIED CODE FUNCTIONS",len(result))
     for m in result:
         print("FUNCTION",m["name"],m["imp"],"instructions",m["instruction_count"])
