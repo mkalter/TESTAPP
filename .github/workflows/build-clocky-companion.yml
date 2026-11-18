@@ -1,0 +1,160 @@
+name: Build Clocky iPhone + Watch IPA (unsigned)
+on:
+  push:
+    branches: [ci/clocky-unsigned-20261118]
+    paths: [.github/workflows/build-clocky-companion.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone pinned upstream Clocky
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/pookjw/Clocky.git upstream
+          git -C upstream checkout --detach e321aa6b8e951fd287178f42d1c9f71e29dbdd4b
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Adapt project and framework stubs for Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' upstream/Clocky.xcodeproj/project.pbxproj
+          sed -i '' 's/preferredProjectObjectVersion = 110;/preferredProjectObjectVersion = 77;/' upstream/Clocky.xcodeproj/project.pbxproj
+          find upstream -path '*watchos-arm64_arm64_32_arm64e_arm64e.x1*' -name '*.tbd' -print0 | while IFS= read -r -d '' stub; do
+            sed -i '' 's/armv7k-watchos, arm64-watchos, arm64e-watchos, arm64e.x1-watchos, arm64_32-watchos/arm64-watchos/g' "$stub"
+          done
+
+      - name: Compile Watch application
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project upstream/Clocky.xcodeproj \
+            -scheme Clocky \
+            -configuration Release \
+            -destination 'generic/platform=watchOS' \
+            -derivedDataPath "$PWD/upstream/.ci-build" \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee watch-build.log
+
+      - name: Build minimal native iPhone companion, embed Watch application
+        shell: bash
+        run: |
+          set -euo pipefail
+          IOS="dist/Payload/Clocky.app"
+          WATCH="$IOS/Watch/Clocky.app"
+          WATCH_SOURCE="upstream/.ci-build/Build/Products/Release-watchos/Clocky.app"
+          test -f "$WATCH_SOURCE/Clocky"
+          mkdir -p "$IOS/Watch" native
+          ditto "$WATCH_SOURCE" "$WATCH"
+
+          # Convert the upstream Watch-only bundle into an iPhone-paired watchOS app.
+          /usr/libexec/PlistBuddy -c "Delete :WKWatchOnly" "$WATCH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :WKCompanionAppBundleIdentifier string com.pookjw.Clocky" "$WATCH/Info.plist"
+
+          cat > native/main.m <<'EOF'
+          #import <UIKit/UIKit.h>
+          @interface ClockyCompanionDelegate : UIResponder <UIApplicationDelegate>
+          @property (nonatomic, strong) UIWindow *window;
+          @end
+          @implementation ClockyCompanionDelegate
+          - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+              self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+              UIViewController *controller = [UIViewController new];
+              controller.view.backgroundColor = [UIColor systemBackgroundColor];
+              UILabel *label = [UILabel new];
+              label.translatesAutoresizingMaskIntoConstraints = NO;
+              label.numberOfLines = 0;
+              label.textAlignment = NSTextAlignmentCenter;
+              label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+              label.text = @"Clocky\\n\\nOpen Clocky on your Apple Watch to explore faces.\\nLong-press the Watch screen to choose a face.";
+              [controller.view addSubview:label];
+              [NSLayoutConstraint activateConstraints:@[
+                [label.centerXAnchor constraintEqualToAnchor:controller.view.centerXAnchor],
+                [label.centerYAnchor constraintEqualToAnchor:controller.view.centerYAnchor],
+                [label.leadingAnchor constraintGreaterThanOrEqualToAnchor:controller.view.leadingAnchor constant:24],
+                [label.trailingAnchor constraintLessThanOrEqualToAnchor:controller.view.trailingAnchor constant:-24]
+              ]];
+              self.window.rootViewController = controller;
+              [self.window makeKeyAndVisible];
+              return YES;
+          }
+          @end
+          int main(int argc, char *argv[]) {
+              @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass([ClockyCompanionDelegate class])); }
+          }
+          EOF
+
+          cat > "$IOS/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleIdentifier</key><string>com.pookjw.Clocky</string>
+            <key>CFBundleExecutable</key><string>ClockyCompanion</string>
+            <key>CFBundleName</key><string>Clocky</string>
+            <key>CFBundleDisplayName</key><string>Clocky</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>MinimumOSVersion</key><string>16.0</string>
+            <key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
+            <key>UIDeviceFamily</key><array><integer>1</integer></array>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+          </dict></plist>
+          EOF
+
+          xcrun --sdk iphoneos clang -arch arm64 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=16.0 -fobjc-arc \
+            -framework Foundation -framework UIKit \
+            native/main.m -o "$IOS/ClockyCompanion"
+          printf 'APPL????' > "$IOS/PkgInfo"
+          plutil -convert binary1 "$IOS/Info.plist"
+          plutil -p "$IOS/Info.plist"
+          plutil -p "$WATCH/Info.plist"
+          file "$IOS/ClockyCompanion" "$WATCH/Clocky"
+          test -f "$IOS/ClockyCompanion"
+          test -f "$WATCH/Clocky"
+
+      - name: Package and check iPhone IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -qry Clocky-iPhone-Watch-unsigned.ipa Payload
+          unzip -l Clocky-iPhone-Watch-unsigned.ipa | grep -E 'Payload/Clocky.app/(ClockyCompanion|Watch/Clocky.app/Clocky)'
+          {
+            echo "## Successfully compiled paired Clocky IPA"
+            echo "- iPhone host: native ARM64 executable in Payload/Clocky.app"
+            echo "- Watch app: ARM64 NanoTimeKit app in Payload/Clocky.app/Watch/Clocky.app"
+            echo "- Both are unsigned. An Apple ID signing workflow must sign iPhone **and** Watch bundle before installation."
+            echo "- Code from pookjw/Clocky at e321aa6b8e951fd287178f42d1c9f71e29dbdd4b"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload paired IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clocky-iPhone-Watch-unsigned
+          path: dist/Clocky-iPhone-Watch-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clocky-companion-build-log
+          path: watch-build.log
+          if-no-files-found: ignore
