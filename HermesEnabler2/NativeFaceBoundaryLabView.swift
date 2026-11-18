@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Five independently runnable read-only tests of Apple's *native* watchOS
+/// Six independently runnable read-only tests of Apple's *native* watchOS
 /// ClockFace / NanoTimeKit availability chain. No watch faces are installed.
 struct NativeFaceBoundaryLabView: View {
     @State private var report = "Kies één test. De volledige log wordt naar de iPhone gestuurd."
@@ -11,7 +11,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T2 · Bootstrap-lookup", "Kunnen we de dienstnaam vinden, zonder XPC-berichten te sturen?"),
         ("T3 · Systeemopslag", "Bestaan de NanoTimeKit-mappen en welke lees-/schrijfrechten meldt het OS?"),
         ("T4 · Originele FaceBundles", "Zijn Zeus/Hermès2025-bundels op de Watch via het bestandssysteem zichtbaar?"),
-        ("T5 · TCC / Software Update", "Controleren welke diensten bereikbaar lijken en wie MobileGestalt bezit.")
+        ("T5 · TCC / Software Update", "Controleren welke diensten bereikbaar lijken en wie MobileGestalt bezit."),
+        ("T6 · Apple-daemonrechten", "Probeer uitsluitend te lezen of tccd zelf schrijfrechten heeft.")
     ]
 
     var body: some View {
@@ -34,7 +35,7 @@ struct NativeFaceBoundaryLabView: View {
                     }
                 }
 
-                Button("Alle 5 lezen en meten") { runAll() }
+                Button("Alle 6 lezen en meten") { runAll() }
                     .buttonStyle(.bordered)
                     .disabled(isRunning)
 
@@ -66,6 +67,9 @@ struct NativeFaceBoundaryLabView: View {
             case 4:
                 name = "protected-writer-service-gate.txt"
                 output = BQRunProtectedWriterServiceGate() as String
+            case 5:
+                name = "trusted-daemon-policy-differential.txt"
+                output = BQRunTrustedDaemonPolicyDifferential() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
@@ -89,7 +93,8 @@ struct NativeFaceBoundaryLabView: View {
                 ("native-face-bootstrap-lookup.txt", BQRunNativeFaceBootstrapLookup() as String),
                 ("native-face-store-policy.txt", BQRunNativeFaceStorePolicy() as String),
                 ("native-face-bundle-inventory.txt", BQRunNativeFaceBundleInventory() as String),
-                ("protected-writer-service-gate.txt", BQRunProtectedWriterServiceGate() as String)
+                ("protected-writer-service-gate.txt", BQRunProtectedWriterServiceGate() as String),
+                ("trusted-daemon-policy-differential.txt", BQRunTrustedDaemonPolicyDifferential() as String)
             ]
             for (name, text) in results {
                 _ = await WatchConnectivityManager.shared.sendDiagnosticReport(name: name, text: text)
