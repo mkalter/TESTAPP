@@ -130,9 +130,8 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
           @"__HermesEnabler_ReadOnly_Invalid__", @"__invalid_bundle__")];
         if (transportError) [lines addObject:transportError];
         if (style44.length && (zeus.length || hermes25.length)) {
-            NSArray<NSString *> *ids=[@[zeus ?: @"",hermes25 ?: @""] filteredArrayUsingPredicate:
-                [NSPredicate predicateWithBlock:^BOOL(id v, NSDictionary *_) {return [v length]>0;}]];
-            for (NSString *bundle in ids) {
+            for (NSString *bundle in @[zeus ?: @"", hermes25 ?: @""]) {
+                if (!bundle.length) continue;
                 [lines addObject:[NSString stringWithFormat:@"NATIVE VALIDATION only: type=%@ bundle=%@",
                                   style44,bundle]];
                 [lines addObject:BQCKRequestValidation(remote,style44,bundle)];
