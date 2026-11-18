@@ -155,3 +155,20 @@ De original launchd manifest is onafhankelijk herlezen: `com.apple.mobilegestalt
 De publieke methodenamen die in dezelfde originele helperbinary worden gevonden zijn `rebuildCache:` en `setCacheSentinel:`. Volgens de gepubliceerde firmwareanalyse kan cache-rebuild de bestaande cache unlinken alvorens regeneratie; sentinel schrijft vaste inhoud naar de sentinelpad. Geen `DeviceBrand`/plisthoudende setter is aangetoond. Daarom **nooit deze muterende helper-API als alleen-leesconnectiviteitstest gebruiken**.
 
 De aanvullende [offline helper-XPC-IMP-map #44267247147](https://github.com/mkalter/TESTAPP/actions/runs/44267247147) onderzoekt de implementaties en autorisatiebranch zonder de dienst aan te roepen.
+
+
+## 18 november — nieuwe optionele T7 ClockKit-validatie (fysiek nog niet uitgevoerd)
+
+Origineel bevestigd:
+- [Originele Watch6,18/23U95 FaceBundle Info.plists #44269491459](https://github.com/mkalter/TESTAPP/actions/runs/44269491459) bewijzen `com.apple.Hermes2025Face` (Hermès 2025) en `com.apple.NTKZeusFaceBundle` (Zeus/Poodle).
+- [Originele Watch6,18 dyld ClockKit #44270583446](https://github.com/mkalter/TESTAPP/actions/runs/44270583446) heeft SHA256 `225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad`. Die originele Watch-binary bevat de twee bekende ClockKit-validatie-/importselectors; een native NanoTimeKit collectie-mutator werd in deze strings niet gevonden. **Niet hetzelfde als bewezen volledige XPC-protocolaudit.**
+- [iPhone + Watch unsigned T7-IPA build #44270806397](https://github.com/mkalter/TESTAPP/actions/runs/44270806397) **SUCCESS**, artifact `unsigned-iphone-watch-ipa` ID `14411579760`.
+
+Nieuwe optionele knop `Native Face Lab → T7 · ClockKit-validatie`:
+1. Runtime-aanwezigheid `NSXPCConnection`, `NSXPCInterface` en de in Watch SDK niet-beschikbare maar optioneel dynamische `initWithServiceName:`. Ontbrekend = UNKNOWN.
+2. Exposeert uitsluitend read-only `validateFaceType:faceBundleId:completionHandler:` op de door T2 bereikbare ClockKit-Machnaam, géén add/import/mutatieprotocollen.
+3. Verstuur één opzettelijk ongeldig controletype (5 seconden timeout) om protocolliveness van native face eligibility te scheiden.
+4. Alleen als `NTKFaceBundleStringFromFaceStyle(44)` bestaat, en het echte originele FaceBundle Info.plist op de Watch leesbaar is, vraag Zeus en/of Hermès2025 read-only validatie. Anders SKIP; geen gokwaarden.
+5. Retourneer verslag `clockkit-readonly-face-validation.txt` aan iPhone. Een succesvolle validatie bewijst NIET het toevoegen van een originele Hermès-wijzerplaat aan de stock Watch Carousel.
+
+T7 zit bewust NIET in de bestaande knop "Alle 6 lezen en meten". De nieuwe IPA is unsigned en vereist een normale geldige ondertekening/installatie. Nog géén live T7-log, geautoriseerde XPC-bevestiging, systeemface-toevoeging of beschermde MobileGestalt-write bewezen.
