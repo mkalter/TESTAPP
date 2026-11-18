@@ -117,6 +117,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "native-face-store-policy.txt",
             "native-face-bundle-inventory.txt",
             "protected-writer-service-gate.txt",
+            "trusted-daemon-policy-differential.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -168,6 +169,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "native-face-store-policy.txt",
             "native-face-bundle-inventory.txt",
             "protected-writer-service-gate.txt",
+            "trusted-daemon-policy-differential.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
