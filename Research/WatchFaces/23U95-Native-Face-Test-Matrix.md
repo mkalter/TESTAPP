@@ -231,3 +231,59 @@ specific to those bundles on this Watch. A standard control rejection
 means no safe bundle-specific conclusion from ClockKit alone. Either
 case is STILL NOT an Apple native gallery add or persistent unlock.
 No imports, protected writes, library reset or device spoofing.
+
+
+## T8 physical result and corrected build — 18 November 2026 09:42:47 UTC
+
+The user physically ran T8 on **Watch6,18, watchOS 26.6.1 build 23U95**:
+
+```
+Local NTKFaceDescriptor=absent CLKDevice=present
+currentDevice=present initWithFaceStyle=absent isAvailableForDevice=absent
+UNKNOWN: missing local Apple native-face availability API.
+Original native style44=bundle
+Zeus ID=com.apple.NTKZeusFaceBundle
+Hermès2025 ID=com.apple.Hermes2025Face
+LOCAL native Zeus availability: NOT AVAILABLE (local descriptor)
+LOCAL native Hermès2025 availability: NOT AVAILABLE (local descriptor)
+SKIPPED remote differential: no VERIFIED locally available standard control.
+```
+
+**Precise interpretation:** the early `NTKFaceDescriptor=absent` was a test
+initialization-order issue. Old code called `BQCKKnownAvailableStandardFace`
+**before** `BQCKFaceTypeForStyle(44)` had resolved/loaded NanoTimeKit.
+Later in this *same* test, **both local Hermès descriptor calls actually
+succeeded** and returned false for original bundles on this device.
+Thus the "missing native-face API" finding does NOT establish an absent
+system framework or an unavailable ordinary face.
+
+**Code corrected on the same experiment branch**:
+`BQCKFaceTypeForStyle(44)` is now called **before**
+`BQCKKnownAvailableStandardFace`. The next T8 run will check the
+same already-loaded Apple descriptor before deciding whether to skip
+XPC. Local original Zeus and Hermès2025 availability logging remains.
+
+**Corrected build verified**:
+- [iPhone+Watch unsigned IPA #44278019502](https://github.com/mkalter/TESTAPP/actions/runs/44278019502) **SUCCESS**;
+  `unsigned-iphone-watch-ipa` artifact `14414879574`, 1,200,737 zip bytes
+  and inner IPA ~1,215,575 bytes.
+- Original IPA contents checked: both
+  `Payload/HermesCompanion.app` and embedded
+  `Watch/HermesEnabler2.app` present.
+- [Safety/contract CI #44278019492](https://github.com/mkalter/TESTAPP/actions/runs/44278019492) **SUCCESS**.
+
+**Actual NanoTimeKit watchOS gate also disassembled**:
+[Original exact 23U95 framework run #44277250878](https://github.com/mkalter/TESTAPP/actions/runs/44277250878)
+confirmed style44 bundle lookup uses
+`NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:` and
+`isRestrictedForDevice:` on ordinary load, whereas normal nonbundle
+styles go via `_NTKFaceStyleIsAvailable`. This explains why a real,
+signed original FaceBundle can be installed in `/System/Library`
+but not available for the Ultra 1. The special `forMigration:`
+branch skips ONE specific restriction call; it has **not** been shown
+to authorize installation in the normal native gallery.
+
+**Next physical step:** sign the corrected T8 IPA (not earlier
+`44277418407` artifact); run **T8 only** and send
+`clockkit-availability-differential.txt`. Do not repeat T1–T7.
+No protected write attempted, no native Hermès enabled.
