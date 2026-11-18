@@ -82,6 +82,39 @@ def extract(b):
             diagnostics.append(dict(pos=hex(region["vm"]+pos),header=hex(flag),count=count))
         pos+=4
     return sec,results,diagnostics
+
+def debug_first_entries(b,sec):
+    region=next((s for s in sec if s["name"]=="__objc_methlist"),None)
+    if region is None:return []
+    diagnostics=[]
+    for pos in range(0,region["size"]-20,4):
+        header=region["file"]+pos
+        flags=u32(b,header);count=u32(b,header+4)
+        if flags!=0x8000000c or not (1<=count<=64):continue
+        e=region["file"]+pos+8
+        vm=region["vm"]+pos+8
+        namevm=vm+i32(b,e)
+        typevm=vm+4+i32(b,e+4)
+        impvm=vm+8+i32(b,e+8)
+        seloff,selsec=source_offset(sec,namevm,4)
+        selvalue=u32(b,seloff) if seloff is not None else None
+        rows=dict(list_vm=hex(region["vm"]+pos),count=count,
+            name_entry_vm=hex(namevm),name_section=selsec["name"] if selsec else None,
+            raw_selref_word=hex(selvalue) if selvalue is not None else None,
+            direct_name_read=readname(b,sec,namevm),
+            type_vm=hex(typevm),type_section=(source_offset(sec,typevm)[1] or {}).get("name"),
+            imp_vm=hex(impvm),imp_section=(source_offset(sec,impvm)[1] or {}).get("name"))
+        if selvalue is not None:
+            candidates=[selvalue,selvalue&0x3fffffff,selvalue&0x03ffffff,
+                        selvalue+0x10000000,selvalue+0x80000000]
+            rows["pointer_candidates"]=[
+                dict(vm=hex(c),section=(source_offset(sec,c)[1] or {}).get("name"),
+                     name=readname(b,sec,c))
+                for c in candidates]
+        diagnostics.append(rows)
+        if len(diagnostics)>=16:break
+    return diagnostics
+
 if __name__=="__main__":
     p=argparse.ArgumentParser()
     p.add_argument("--input",required=True)
@@ -102,11 +135,14 @@ if __name__=="__main__":
                     ("database","path","migrat","entitle","sandbox","delegat","request","access",
                      "registry","cleanup","valid","sync","listener","client","connection"))
                     for m in l["methods"])],
-                all_lists=lists,initial_misalignment_candidates=debug)
+                all_lists=lists,initial_misalignment_candidates=debug,
+                selref_pointer_diagnostics=debug_first_entries(b,sec))
     Path(a.output).write_text(json.dumps(result,indent=2)+"\n")
     print("validated SHA",digest,"validated method lists",len(lists),
           "methods",result["methods"],"interesting lists",len(result["interesting"]))
     for li in result["interesting"][:40]:
         print("LIST",li["vm"],"METHODS","; ".join(
             f"{v['name']}@{v['imp']}" for v in li["methods"][:10]))
-    if not lists:print("No relative method lists validated; inspect first headers:",debug)
+    if not lists:
+        print("No relative method lists validated; inspect first headers:",debug)
+        for x in result["selref_pointer_diagnostics"][:8]:print("SELREF",json.dumps(x))
