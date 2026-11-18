@@ -250,3 +250,35 @@ will attempt SHA-pinned Objective-C IMP recovery from the exact
 original Watch ClockKit and trace the actual method
 `_queue_setupConnectionIfNeeded`. This can distinguish the shipped
 watchOS client initializer from our hypothesis without touching the Watch.
+
+
+## Exact 23U95 ClockKit direct-selector ABI and fallback evidence
+
+The SHA-pinned real ClockKit method list header at `0x49c9c0c0`
+is **`0xc000000f`**, with 4 method entries.
+As confirmed by Apple's ObjC runtime relative selector format, this sets:
+- `0x80000000`: small/relative 12-byte method entries;
+- `0x40000000`: **direct selectors**, not ordinary indirect selector
+  references. The bottom value `0x0f` gives a stride of 12 after
+  clearing 2 flag bits.
+
+[Source diagnostics #44273180201](https://github.com/mkalter/TESTAPP/actions/runs/44273180201)
+independently reported:
+- first method's type offset resolves to `__objc_methtype`;
+- its IMP resolves to original `__text` at `0x49c97d74`;
+- but the name offset calculated as self-relative points to
+  `__objc_methlist`, not `__objc_methname` (e.g.
+  `name_vm=0x49c9c487`);
+- next list's name VM `0x4a94c80d` is outside the extracted image.
+
+This is **exact evidence that the earlier pre-dyld small-list decoder
+cannot treat those optimized name offsets as in-image
+`__objc_selrefs`**. It is a binary layout limitation, not evidence
+that the watchOS ClockKit methods are absent.
+
+An independent [LC_SYMTAB code-address audit #44273680584](https://github.com/mkalter/TESTAPP/actions/runs/44273680584)
+was launched to recover `CLKWatchFaceLibraryServer
+_queue_setupConnectionIfNeeded` from symbol names in the original
+unmodified Mach-O where possible. It stays offline, SHA-guarded,
+and records explicit symbol-count limitations instead of claiming
+a bypass. No on-watch test repeats are necessary for this parser work.
