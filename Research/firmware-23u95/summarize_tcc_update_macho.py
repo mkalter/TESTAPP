@@ -12,55 +12,71 @@ ARCH_ARM64_32 = 0x0200000c
 P = re.compile(r'path|valid|authori|permission|audit|entitle|sandbox|check|write|rename|move|replace|copy|stage|install|tcc|softwareupdate|extract|destination|origin|target|cache|file|preflight|pid|uid|client',re.I)
 
 def mach_symbols(data):
-    if len(data) < 28 or struct.unpack_from("<I",data,0)[0] != MAGIC_32:
-        return {"error":"not a 32-bit Mach-O header", "symbols":{}, "symbol_count":0}
-    if struct.unpack_from("<I",data,4)[0] != ARCH_ARM64_32:
-        return {"error":"not ARM64_32", "symbols":{}, "symbol_count":0}
+    def err(reason):
+        return {"error":reason,"symbols":{},"symbol_count":0}
+    if len(data)<32: return err("invalid Mach-O header")
+    magic=struct.unpack_from("<I",data,0)[0]
+    bits=32 if magic==0xfeedface else 64 if magic==0xfeedfacf else 0
+    if not bits:return err("unrecognized Mach-O magic")
+    cputype=struct.unpack_from("<I",data,4)[0]
+    if cputype not in (0x0200000c,0x0100000c):
+        return err("not an Apple ARM64/ARM64_32 image")
     ncmds=struct.unpack_from("<I",data,16)[0]
-    p=28; symtab=None; text_section=None
-    for i in range(ncmds):
-        if p+8>len(data):return {"error":"broken load command", "symbols":{}, "symbol_count":0}
+    p=28 if bits==32 else 32
+    symtab=None;text_section=None
+    for _ in range(ncmds):
+        if p+8>len(data):return err("truncated load command")
         cmd,size=struct.unpack_from("<II",data,p)
-        if size<8 or p+size>len(data):return {"error":"broken load command size", "symbols":{}, "symbol_count":0}
-        if cmd==2:symtab=struct.unpack_from("<IIII",data,p+8)
-        if cmd==1:
-            nsects=struct.unpack_from("<I",data,p+48)[0] if size>=56 else 0
-            for n in range(nsects):
-                off=p+56+n*68
-                if off+68>p+size:break
-                sect=data[off:off+16].split(b"\0",1)[0]
-                seg=data[off+16:off+32].split(b"\0",1)[0]
-                addr,sz,fileoffset=struct.unpack_from("<III",data,off+32)
-                if sect==b"__text" and seg==b"__TEXT":text_section=(addr,sz,fileoffset)
+        if size<8 or p+size>len(data):return err("broken load command")
+        if cmd==2 and size>=24:symtab=struct.unpack_from("<IIII",data,p+8)
+        if (cmd==1 and bits==32) or (cmd==0x19 and bits==64):
+            nsects=struct.unpack_from("<I",data,p+(48 if bits==32 else 64))[0]
+            step=68 if bits==32 else 80
+            header=56 if bits==32 else 72
+            for j in range(nsects):
+                start=p+header+j*step
+                if start+step>p+size:break
+                sect=data[start:start+16].split(b"\0",1)[0]
+                seg=data[start+16:start+32].split(b"\0",1)[0]
+                if bits==32:
+                    addr,sz=struct.unpack_from("<II",data,start+32)
+                    offset=struct.unpack_from("<I",data,start+40)[0]
+                else:
+                    addr,sz=struct.unpack_from("<QQ",data,start+32)
+                    offset=struct.unpack_from("<I",data,start+48)[0]
+                if sect==b"__text" and seg in (b"__TEXT",b"__TEXT_EXEC"):
+                    text_section=(addr,sz,offset)
         p+=size
-    if not symtab or not text_section:
-        return {"error":"missing symtab or __TEXT,__text", "symbols":{}, "symbol_count":0}
+    if not symtab or not text_section:return err("missing LC_SYMTAB or executable text")
     off,num,str_off,str_len=symtab
-    if off+num*12>len(data) or str_off+str_len>len(data):
-        return {"error":"out-of-bounds nlist", "symbols":{}, "symbol_count":0}
+    stride=12 if bits==32 else 16
+    if off+num*stride>len(data) or str_off+str_len>len(data):
+        return err("invalid original symbol table bounds")
     names=data[str_off:str_off+str_len]
     codeaddr,codesize,codeoff=text_section
     found=[]
     for i in range(num):
-        nameoff,stype,sect,desc,vm=struct.unpack_from("<IBBhI",data,off+i*12)
+        fmt="<IBBhI" if bits==32 else "<IBBHQ"
+        nameoff,stype,sect,desc,vm=struct.unpack_from(fmt,data,off+i*stride)
         if not codeaddr<=vm<codeaddr+codesize or nameoff>=str_len:continue
-        nul=names.find(b"\0",nameoff)
-        if nul<0:continue
-        name=names[nameoff:nul].decode("utf-8","replace")
-        if name:found.append((vm,name))
+        stop=names.find(b"\0",nameoff)
+        if stop<0:continue
+        label=names[nameoff:stop].decode("utf-8","replace")
+        if label:found.append((vm,label))
     found.sort()
-    high={}
-    for i,(addr,name) in enumerate(found):
-        if not P.search(name):continue
-        nextaddr = found[i+1][0] if i+1<len(found) else codeaddr+codesize
-        length=max(0,min(nextaddr-addr,0x4000))
-        offset=codeoff+(addr-codeaddr)
-        if offset>=len(data):continue
-        segment=data[offset:offset+length]
-        high[name]={"bytes":length,"body_sha256":hashlib.sha256(segment).hexdigest(),
+    out={}
+    for i,(addr,label) in enumerate(found):
+        if not P.search(label):continue
+        next_pc=found[i+1][0] if i+1<len(found) else codeaddr+codesize
+        length=max(0,min(next_pc-addr,0x4000))
+        ofs=codeoff+(addr-codeaddr)
+        if ofs>=len(data):continue
+        body=data[ofs:ofs+length]
+        out[label]={"bytes":length,"body_sha256":hashlib.sha256(body).hexdigest(),
                     "original_vm":hex(addr)}
-    return {"symbols":high,"symbol_count":num,
-            "defined_code_symbols":len(found),"error":None}
+    return {"symbols":out,"symbol_count":num,
+            "defined_code_symbols":len(found),"macho_bits":bits,"error":None}
+
 
 def analyze(path):
     p=Path(path);d=p.read_bytes()
