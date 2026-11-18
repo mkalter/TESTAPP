@@ -60,6 +60,9 @@ def main():
     tab,symbols=macho_symbols(b)
     sect=sections(b)
     target=[m for m in symbols if any(t in m["name"] for t in INTEREST)]
+    symbol_names_by_vm={}
+    for symbol in symbols:
+        symbol_names_by_vm.setdefault(symbol["vm"],[]).append(symbol["name"])
     values=sorted({m["vm"] for m in symbols if (source_offset(sect,m["vm"],4)[1] or {}).get("name")=="__text"})
     md=Cs(CS_ARCH_ARM64,CS_MODE_ARM)
     result=[]
@@ -79,6 +82,8 @@ def main():
             if not c:continue
             targetaddr=int(c.group(),16)
             row=dict(pc=hex(q.address),target=hex(targetaddr))
+            names=symbol_names_by_vm.get(targetaddr,[])
+            if names:row["exact_original_target_symbols"]=sorted(set(names))[:12]
             try:
                 named=selector_stub(b,sect,targetaddr)
                 if named:row["objc_selector"]=named
@@ -97,6 +102,8 @@ def main():
     for m in result:
         print("FUNCTION",m["name"],m["imp"],"instructions",m["instruction_count"])
         for c in m["calls"]:
+            if "exact_original_target_symbols" in c:
+                print("    EXACT CALL TARGET",c["pc"],c["target"],c["exact_original_target_symbols"])
             if "objc_selector" in c: print("    call",c["pc"],c["objc_selector"].get("selector"))
     if not result:print("NO VERIFIED METHOD SYMBOLS — check LC_SYMTAB and original dyld cache selector layout")
 if __name__=="__main__":main()
