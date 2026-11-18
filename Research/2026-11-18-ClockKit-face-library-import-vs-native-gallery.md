@@ -330,3 +330,50 @@ bypass server-side client auditing or face eligibility.
 started, with conclusion checked separately before providing an IPA.
 Only T7 needs to be rerun on physical Watch after successful code signing;
 T1–T6 remain unchanged. No proof of native Hermès unlock.
+
+
+## CONFIRMED: exact original XPC initializer selector and 0x1000 option
+
+[Independent original symbol cross-reference #44274797889](https://github.com/mkalter/TESTAPP/actions/runs/44274797889)
+**SUCCESS**; original ClockKit SHA matched exactly
+`225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad`.
+
+The call at `0x49c6437c` resolves **not by guess but by the original
+Mach-O `LC_SYMTAB` binding at `0x49cccb20`** to:
+
+```
+_objc_msgSend$initWithMachServiceName:options:
+```
+
+Paired with `mov w3,#0x1000` immediately preceding that call at
+`0x49c64378`, this now **proves the genuine first-party Watch6,18
+ClockKit client uses the privileged launchd Mach namespace option**.
+The same original source function calls:
+- `_CLKWatchFaceLibraryServerInterface` at `0x49c64390`;
+- `setRemoteObjectInterface:` at `0x49c643a8`;
+- `setInterruptionHandler:` at `0x49c64408`;
+- `setInvalidationHandler:` at `0x49c64418`;
+- `resume` at `0x49c64420`.
+
+The genuine first-party read-only validator forwarding function
+`-[CLKWatchFaceLibraryServer validateFaceType:faceBundleId:completionHandler:]`
+at `0x49c64604` invokes:
+```
+0x49c64638 _objc_msgSend$_queue_setupConnectionIfNeeded
+0x49c64680 _objc_msgSend$synchronousRemoteObjectProxyWithErrorHandler:
+0x49c6469c _objc_msgSend$validateFaceType:faceBundleId:completionHandler:
+```
+
+Likewise, the original file importer invokes the separate
+`openWatchFaceURLWithSecurityScopedURL:sourceApplicationBundleIdentifier:completionHandler:`
+selector. These are distinct service operations; **the original
+ClockKit client still exposes no verified arbitrary native Hermès
+FaceBundle library writer**.
+
+The current T7-v3 developer app intentionally connects with a
+read-only subset of the validator interface and matches Apple's
+`initWithMachServiceName:options:` plus `0x1000`, but this
+**does not supply the original client signing identity, entitlement,
+server authorization or native face eligibility**. Its only meaningful
+next physical result is a real validator reply or a more specific
+XPC error; native gallery persistence remains unproven.
