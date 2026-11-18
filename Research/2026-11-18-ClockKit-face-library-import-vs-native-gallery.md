@@ -377,3 +377,47 @@ read-only subset of the validator interface and matches Apple's
 server authorization or native face eligibility**. Its only meaningful
 next physical result is a real validator reply or a more specific
 XPC error; native gallery persistence remains unproven.
+
+
+## Physical T7-v3 result — first real ClockKit validator replies (18 Nov 09:27:05 UTC)
+
+**Actual user-provided Watch6,18 / watchOS 26.6.1 (23U95) log:**
+
+- Apple protocol available; style `44` string resolves to `bundle`, original Zeus `com.apple.NTKZeusFaceBundle`, Hermès2025 `com.apple.Hermes2025Face`, both actual signed Apple FaceBundles.
+- Using **exact** original `initWithMachServiceName:options:` and `options=0x1000`, the ordinary development-signed app successfully receives **three ClockKit server RPC completions** (no 4099, no timeout).
+- Intentionally nonexistent type control: `CLKWatchFaceLibraryErrorDomain code=4`.
+- `type=bundle`, Zeus `com.apple.NTKZeusFaceBundle`: same domain/code=4.
+- `type=bundle`, Hermès2025 `com.apple.Hermes2025Face`: same domain/code=4.
+- No file opened/imported, no native library add/reset or cache write.
+
+**Official Apple ClockKit error enum:** `CLKWatchFaceLibraryErrorCodeFaceNotAvailable = 4` (different from `InvalidFile=2` and `PermissionDenied=3`). Direct SDK header:
+https://github.com/xybp888/iOS-SDKs/blob/4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff/iPhoneOS26.4.sdk/System/Library/Frameworks/ClockKit.framework/Headers/CLKWatchFaceLibrary.h
+
+**Interpretation:** genuine XPC authentication and method dispatch are now established
+for the *read-only* validator. Both original Hermès FaceBundle identifiers
+receive Apple's `FaceNotAvailable` answer in current device context, but the
+deliberately nonexistent control gets the same error, so this observation
+alone cannot distinguish an actual model restriction from a blanket
+availability failure in the service's device context or a generic unmapped
+validation error. A **known-good compatible first-party face** is needed
+as positive control; this must be selected from actual on-device
+style/FaceBundle availability metadata, not from an invented bundle ID.
+
+**iOS 26.1 public reverse-engineered utility semantics, not yet verified
+exact Watch binary**:
+`+[NTKGreenfieldUtilities validateFaceType:faceBundleId:]` converts face-type
+text to a style, constructs `NTKFaceDescriptor initWithFaceStyle:` for
+non-44 styles, and `initWithBundleIdentifier:` for style 44, then calls
+`isAvailableForDevice:[CLKDevice currentDevice]`. For style 44,
+`-[NTKFaceDescriptor isAvailableForDevice:]` returns whether
+`[NTKFaceBundleManager sharedManager]
+faceBundleForBundleIdentifier:... onDevice:...` is non-nil;
+it does **not** merely test whether a bundle directory exists.
+See https://github.com/EthanArbuckle/iPhone18-3_26.1_23B85_Restore/blob/90aa0cfe59d9682b4265e1354c8b19ec3c7823ab/System/Library/PrivateFrameworks/NanoTimeKit.framework/NanoTimeKit/NTKFaceDescriptor.mm
+and the actual Greenfield decomp source.
+
+**Next discriminator:** independently confirm these exact method implementations
+in Apple's original Watch6,18 23U95 NanoTimeKit shared-cache image and add
+a single bounded read-only positive control chosen from actual
+available native non-bundle styles. Avoid a blind array of unknown
+FaceBundle bundle IDs or any mutating API.
