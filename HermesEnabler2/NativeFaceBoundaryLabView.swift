@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Six no-RPC tests plus two separately opt-in read-only XPC validations test of Apple's *native* watchOS
+/// Six baseline diagnostics, two ClockKit validator probes, one local migration lookup differential test of Apple's *native* watchOS
 /// ClockFace / NanoTimeKit availability chain. No watch faces are installed.
 struct NativeFaceBoundaryLabView: View {
     @State private var report = "Kies één test. De volledige log wordt naar de iPhone gestuurd."
@@ -14,7 +14,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T5 · TCC / Software Update", "Controleren welke diensten bereikbaar lijken en wie MobileGestalt bezit."),
         ("T6 · Apple-daemonrechten", "Probeer uitsluitend te lezen of tccd zelf schrijfrechten heeft."),
         ("T7 · ClockKit-validatie", "Vraag Apple alleen of een wijzerplaattype geldig is; niets installeren."),
-        ("T8 · Positieve Apple-controle", "Vergelijk een aantoonbaar beschikbare Apple-wijzerplaat met Hermès.")
+        ("T8 · Positieve Apple-controle", "Vergelijk een aantoonbaar beschikbare Apple-wijzerplaat met Hermès."),
+        ("T9 · Migratie-lookup", "Vergelijk lokaal de gewone en Apple's migratiegerichte Hermès-FaceBundle-lookup.")
     ]
 
     var body: some View {
@@ -22,7 +23,7 @@ struct NativeFaceBoundaryLabView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Native Hermès · systeemonderzoek")
                     .font(.headline)
-                Text("T1–T6 meten rechten. T7 en T8 testen los van elkaar alleen-lezende ClockKit-validatie; niets wordt geïnstalleerd.")
+                Text("T1–T6 meten rechten. T7/T8 valideren via ClockKit, T9 vergelijkt alleen lokale FaceBundle-lookups; niets wordt geïnstalleerd.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -78,6 +79,9 @@ struct NativeFaceBoundaryLabView: View {
             case 7:
                 name = "clockkit-availability-differential.txt"
                 output = BQRunClockKitAvailabilityDifferential() as String
+            case 8:
+                name = "clockkit-migration-local-differential.txt"
+                output = BQRunClockKitMigrationLookupDifferential() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
