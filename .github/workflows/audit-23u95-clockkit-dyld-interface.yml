@@ -119,6 +119,11 @@ jobs:
               --out audit/original-nanotimekit-face-availability-IMP-trace.json \
               | tee audit/nanotimekit-availability-summary.txt || \
               echo "No original NTK availability methods verified; don't infer missing" > audit/nanotimekit-limitation.txt
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$NTK" --sha256 "$NTK_SHA" --profile migration \
+              --out audit/original-nanotimekit-json-migration-IMP-trace.json \
+              | tee audit/nanotimekit-migration-summary.txt || \
+              echo "No original JSON migration callchain proven; no speculative on-device action" > audit/nanotimekit-migration-limitation.txt
           else
             echo "NanoTimeKit not extracted from original 23U95 dyld; unavailable" > audit/nanotimekit-limitation.txt
           fi
