@@ -39,7 +39,15 @@ def readname(b,sec,vm,depth=0):
     if p is None:return None
     if s["name"]=="__objc_selrefs" and depth<1:
         if p+4>len(b):return None
-        return readname(b,sec,u32(b,p),depth+1)
+        raw=u32(b,p)
+        # On-disk DYLD_CHAINED_PTR_32 rebases store VM target in 26 bits;
+        # the higher 6 bits are chain/bind metadata, not an ObjC selector VM.
+        # Validate the decoded target against __objc_methname to avoid
+        # inventing method names from unrelated pointer-like data.
+        for candidate in (raw,raw&0x03ffffff,raw&0x3fffffff):
+            decoded=readname(b,sec,candidate,depth+1)
+            if decoded:return decoded
+        return None
     if s["name"] not in ("__objc_methname","__cstring"):return None
     end=b.find(b"\0",p,min(len(b),p+350))
     if end<0:return None
