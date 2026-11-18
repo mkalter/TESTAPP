@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Four independently runnable read-only tests of Apple's *native* watchOS
+/// Five independently runnable read-only tests of Apple's *native* watchOS
 /// ClockFace / NanoTimeKit availability chain. No watch faces are installed.
 struct NativeFaceBoundaryLabView: View {
     @State private var report = "Kies één test. De volledige log wordt naar de iPhone gestuurd."
