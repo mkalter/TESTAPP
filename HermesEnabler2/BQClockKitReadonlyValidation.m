@@ -20,14 +20,18 @@ static NSString *BQCKRunName(NSString *name) {
     return sysctlbyname(name.UTF8String,buf,&len,NULL,0)==0 ?
         ([NSString stringWithUTF8String:buf] ?: @"unknown") : @"unknown";
 }
-static NSString *BQCKWriteOwnReport(NSArray<NSString *> *lines) {
+static NSString *BQCKWriteOwnReportNamed(NSArray<NSString *> *lines,NSString *filename) {
     NSString *out=[lines componentsJoinedByString:@"\n"];
     NSError *error=nil;
-    NSString *dest=[BQDocuments() stringByAppendingPathComponent:@"clockkit-readonly-face-validation.txt"];
+    NSString *dest=[BQDocuments() stringByAppendingPathComponent:filename];
     if (![out writeToFile:dest atomically:YES encoding:NSUTF8StringEncoding error:&error])
         out=[out stringByAppendingFormat:@"\nOWN report write FAILED: %@",error];
     NSLog(@"[ClockKitReadOnly] %@\n[/ClockKitReadOnly]",out);
     return out;
+}
+
+static NSString *BQCKWriteOwnReport(NSArray<NSString *> *lines) {
+    return BQCKWriteOwnReportNamed(lines,@"clockkit-readonly-face-validation.txt");
 }
 
 static NSString *BQCKFaceType44(void) {
@@ -184,4 +188,174 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
     }
     [lines addObject:@"No watchface added, no protected data changed, no sandbox token."];
     return BQCKWriteOwnReport(lines);
+}
+
+
+// T8: On-device positive-control differential. All local probes below use
+// NTKFaceDescriptor's availability getter. The only XPC method called is
+// the same read-only ClockKit face type validator already proven in T7.
+static NSString *BQCKFaceTypeForStyle(NSInteger style) {
+    typedef id (*StyleStringFn)(NSInteger);
+    StyleStringFn fn=(StyleStringFn)dlsym(RTLD_DEFAULT,"NTKFaceBundleStringFromFaceStyle");
+    if (!fn) {
+        void *h=dlopen("/System/Library/PrivateFrameworks/NanoTimeKit.framework/NanoTimeKit",
+                       RTLD_LAZY|RTLD_LOCAL);
+        if (h) fn=(StyleStringFn)dlsym(h,"NTKFaceBundleStringFromFaceStyle");
+    }
+    if (!fn) return nil;
+    id value=fn(style);
+    return [value isKindOfClass:NSString.class] ? value : nil;
+}
+
+static NSDictionary<NSString *,id> *BQCKKnownAvailableStandardFace(
+                     NSMutableArray<NSString *> *lines) {
+    Class faceClass=NSClassFromString(@"NTKFaceDescriptor");
+    Class deviceClass=NSClassFromString(@"CLKDevice");
+    SEL currentSel=NSSelectorFromString(@"currentDevice");
+    SEL initSel=NSSelectorFromString(@"initWithFaceStyle:");
+    SEL availabilitySel=NSSelectorFromString(@"isAvailableForDevice:");
+    Method currentMethod=deviceClass ? class_getClassMethod(deviceClass,currentSel) : NULL;
+    Method initMethod=faceClass ? class_getInstanceMethod(faceClass,initSel) : NULL;
+    Method availMethod=faceClass ? class_getInstanceMethod(faceClass,availabilitySel) : NULL;
+    [lines addObject:[NSString stringWithFormat:
+        @"Local NTKFaceDescriptor=%@ CLKDevice=%@ currentDevice=%@ initWithFaceStyle=%@ isAvailableForDevice=%@",
+        faceClass ? @"present" : @"absent",deviceClass ? @"present" : @"absent",
+        currentMethod ? @"present" : @"absent",initMethod ? @"present" : @"absent",
+        availMethod ? @"present" : @"absent"]];
+    if (!currentMethod || !initMethod || !availMethod) {
+        [lines addObject:@"UNKNOWN: missing local Apple native-face availability API."];
+        return nil;
+    }
+    typedef id (*CurrentFn)(id,SEL);
+    typedef id (*DescriptorInitFn)(id,SEL,NSInteger);
+    typedef BOOL (*AvailabilityFn)(id,SEL,id);
+    id device=((CurrentFn)method_getImplementation(currentMethod))(deviceClass,currentSel);
+    if (!device) {
+        [lines addObject:@"UNKNOWN: currentDevice returned nil. No positive-control guess."];
+        return nil;
+    }
+    AvailabilityFn isAvailable=(AvailabilityFn)method_getImplementation(availMethod);
+    DescriptorInitFn instantiate=(DescriptorInitFn)method_getImplementation(initMethod);
+    NSUInteger checked=0;
+    // 44 is the special bundle faceStyle and is not a standard-style
+    // positive control. Prefer well-established standard Chronograph (2).
+    NSMutableArray<NSNumber *> *styles=[NSMutableArray arrayWithObject:@2];
+    for (NSInteger style=0;style<44;style++) if (style!=2)
+        [styles addObject:@(style)];
+    for (NSNumber *num in styles) {
+        NSInteger style=num.integerValue;
+        NSString *type=BQCKFaceTypeForStyle(style);
+        if (!type.length || [type isEqualToString:@"bundle"]) continue;
+        BOOL allow=NO;
+        @try {
+            id descriptor=instantiate([faceClass alloc],initSel,style);
+            if (!descriptor) continue;
+            allow=isAvailable(descriptor,availabilitySel,device);
+            checked++;
+        } @catch (NSException *exception) {
+            [lines addObject:[NSString stringWithFormat:
+                @"LOCAL style=%ld availability threw %@ (ignored)",
+                (long)style,exception.name]];
+            continue;
+        }
+        if (allow) {
+            [lines addObject:[NSString stringWithFormat:
+                @"POSITIVE CONTROL selected local available style=%ld type=%@ after %lu descriptor checks",
+                (long)style,type,(unsigned long)checked]];
+            return @{@"style":num,@"type":type};
+        }
+    }
+    [lines addObject:[NSString stringWithFormat:
+        @"UNKNOWN: no locally available standard style among 0...43; inspected=%lu. No positive-control guess.",
+        (unsigned long)checked]];
+    return nil;
+}
+
+NSString *BQRunClockKitAvailabilityDifferential(void) {
+    NSMutableArray<NSString *> *lines=[NSMutableArray arrayWithObjects:
+        @"=== Native Face Boundary Lab · T8: native availability differential ===",
+        [NSString stringWithFormat:@"Time=%@; machine=%@; OSbuild=%@",
+          NSDate.date,BQCKRunName(@"hw.machine"),BQCKRunName(@"kern.osversion")],
+        [NSString stringWithFormat:@"App=%@",NSBundle.mainBundle.bundleIdentifier ?: @"unknown"],
+        @"Only Apple's original read-only ClockKit validateFaceType:faceBundleId:completionHandler: XPC.",
+        @"One local NTKFaceDescriptor isAvailableForDevice positive control selected from real currentDevice.",
+        @"No native face import, library insertion, protected writing or device spoofing.",nil];
+    NSDictionary<NSString *,id> *positive=BQCKKnownAvailableStandardFace(lines);
+    NSString *style44=BQCKFaceTypeForStyle(44);
+    NSString *zeus=BQCKSignedBundleIdentifier(
+        @"/System/Library/NanoTimeKit/FaceBundles/NTKZeusFaceBundle.bundle");
+    NSString *hermes=BQCKSignedBundleIdentifier(
+        @"/System/Library/NanoTimeKit/FaceBundles/NTKHermes2025FaceBundle.bundle");
+    [lines addObject:[NSString stringWithFormat:
+        @"Original native style44=%@ Zeus ID=%@ Hermès2025 ID=%@",
+        style44 ?: @"unavailable", zeus ?: @"unavailable",hermes ?: @"unavailable"]];
+    if (!positive) {
+        [lines addObject:@"SKIPPED remote differential: no VERIFIED locally available standard control."];
+        return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
+    }
+    Class connectionClass=NSClassFromString(@"NSXPCConnection");
+    Class interfaceClass=NSClassFromString(@"NSXPCInterface");
+    SEL machSel=NSSelectorFromString(@"initWithMachServiceName:options:");
+    if (!connectionClass || !interfaceClass ||
+        ![connectionClass instancesRespondToSelector:machSel]) {
+        [lines addObject:@"UNKNOWN: required NSXPC Mach connection runtime not available."];
+        return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
+    }
+    id connection=nil;
+    @try {
+        IMP imp=[[connectionClass alloc] methodForSelector:machSel];
+        if (!imp) {
+            [lines addObject:@"UNKNOWN: Mach initializer IMP missing."];
+            return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
+        }
+        typedef id (*MachInit)(id,SEL,NSString *,NSUInteger);
+        id uninitialized=[connectionClass alloc];
+        connection=((MachInit)imp)(uninitialized,machSel,
+          @"com.apple.ClockKit.CLKWatchFaceLibrary",0x1000);
+        if (!connection) {
+            [lines addObject:@"UNKNOWN: Mach service initializer returned nil."];
+            return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
+        }
+        id iface=[interfaceClass interfaceWithProtocol:@protocol(BQClockKitReadOnlyValidation)];
+        [connection setRemoteObjectInterface:iface];
+        [connection resume];
+        [lines addObject:@"Transport=real Apple Mach service options 0x1000; no privileged entitlement acquired."];
+        NSString *validType=positive[@"type"];
+        [lines addObject:[NSString stringWithFormat:
+            @"POSITIVE remote control: original standard type=%@ style=%@ (locally available=YES)",
+            validType,positive[@"style"]]];
+        NSString *answer=BQCKRequestValidation(connection,validType,@"");
+        [lines addObject:answer];
+        if ([answer hasPrefix:@"TRANSPORT_ERROR"] || [answer hasPrefix:@"UNKNOWN"]) {
+            [lines addObject:@"SKIPPED: all native comparisons because control never completed."];
+        } else if ([answer hasPrefix:@"REPLY success"]) {
+            [lines addObject:@"POSITIVE CONTROL PASS: ClockKit accepted known available standard style."];
+            if ([style44 isEqualToString:@"bundle"]) {
+                for (NSString *bid in @[zeus ?: @"",hermes ?: @""]) {
+                    if (!bid.length) continue;
+                    [lines addObject:[NSString stringWithFormat:
+                        @"NATIVE Hermès comparison: style=bundle ID=%@",bid]];
+                    NSString *result=BQCKRequestValidation(connection,style44,bid);
+                    [lines addObject:result];
+                    if ([result hasPrefix:@"TRANSPORT_ERROR"] ||
+                        [result hasPrefix:@"UNKNOWN"]) {
+                        [lines addObject:@"STOP: remote transport lost during comparison."];
+                        break;
+                    }
+                }
+            } else {
+                [lines addObject:@"SKIPPED Hermès: actual style44 is not bundle."];
+            }
+        } else {
+            [lines addObject:@"POSITIVE CONTROL FAILED: ClockKit rejected a locally available face. Hermès conclusions from same code 4 are not model-specific."];
+            [lines addObject:@"SKIPPED Hermès comparisons because server/device availability contexts disagree."];
+        }
+    } @catch(NSException *exception) {
+        [lines addObject:[NSString stringWithFormat:
+            @"UNKNOWN: local availability/XPC exception %@ %@",exception.name,exception.reason]];
+    } @finally {
+        if (connection) [connection invalidate];
+    }
+    [lines addObject:@"No original face inserted or protected file modified."];
+    return BQCKWriteOwnReportNamed(lines,@"clockkit-availability-differential.txt");
 }
