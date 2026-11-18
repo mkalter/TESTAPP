@@ -480,3 +480,54 @@ The T8 source was corrected to load NanoTimeKit before resolving
 private Objective-C class names, avoiding false missing-class
 diagnostics. This is not a proof of remote device identity spoofing,
 a path to arbitrary MobileGestalt writes or native Hermès insertion.
+
+
+## New differential: forMigration bypasses one specific FaceBundle restriction check
+
+The genuine original Watch6,18/23U95 `NanoTimeKit` implementation
+of `-[NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:forMigration:]`
+is at **0x544B0DDC** in the same SHA-256-verified dyld image
+`e77ccd6c26b7413b2fba543207d9c20f5c33e97faaa2e5801050194f25b87d63`.
+Its exact verified instruction sequence includes:
+
+```asm
+0x544B0DF8 mov  x22, x4              ; fourth explicit method arg (forMigration)
+...
+0x544B0F88 tbnz w22, #0, 0x544B0FA4 ; forMigration=true skips regular restriction query
+0x544B0F8C mov  x0, x23              ; original signed bundle's faceClass
+0x544B0F90 mov  x2, x20              ; target device
+0x544B0F94 bl   0x548CE500          ; _objc_msgSend$isRestrictedForDevice:
+0x544B0F98 cbz  w0, 0x544B0FA4
+0x544B0F9C bl   0x55CE73DC          ; additional conditional gate
+0x544B0FA0 tbz  w0, #0, 0x544B0FF0 ; reject/alternate path; not fully reconstructed
+0x544B0FA4 ...                      ; shared retain/return path
+```
+
+**Narrow, verified inference:** Apple's *migration-specific bundle lookup*
+skips the regular `isRestrictedForDevice:` call if `forMigration` is
+truthy. This is an explicit in-firmware distinction and a **new research
+lead** for how previously paired/recorded faces may survive migration.
+It is NOT evidence that a third-party process can supply migration flags
+to the authorized system daemon, or that native Hermès can be added to
+the Carousel or rendered. The **normal** validation path
+`NTKGreenfieldUtilities.validateFaceType` creates
+`NTKFaceDescriptor`, whose style44 case calls only
+`faceBundleForBundleIdentifier:onDevice:` (no migration flag), so normal
+ClockKit `FaceNotAvailable=4` is fully consistent with this distinction.
+
+Original native daemon:
+[Verified `nanotimekitd` control-flow #44127029726](https://github.com/mkalter/TESTAPP/actions/runs/44127029726)
+maps `_migrateBundleFacesInStore:` at `0x21D74` and
+`_fromSyncResetWithFaces:orderedUUIDs:selectedUUID:` at `0x3E704`.
+`_migrateBundleFacesInStore:` performs internal reconciliation on the
+daemon's own store and calls `setOrderedUUIDs:` /
+`synchronize` on a successful migration condition. Those operations
+**must not** be called speculatively on the user's paired Watch:
+they modify the native face library and could cause unwanted state loss.
+The actual accepted XPC client protocol, collection mutation authority
+and whether Apple gallery passes additional eligibility remain unknown.
+
+The next safe check is therefore to audit how Apple's trusted migration
+code passes `forMigration` to the bundle manager and what validates the
+**incoming native face collection records**. Read-only physical T8 already
+provides current ordinary-vs-Hermès availability without mutating anything.
