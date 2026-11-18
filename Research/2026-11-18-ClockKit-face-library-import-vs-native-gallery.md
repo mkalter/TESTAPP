@@ -187,3 +187,66 @@ to call it. No private entitlement is added by this mechanism and the test
 can still fail at the remote method-authority gate.
 
 No persistent original Hermès face was inserted and no protected file changed.
+
+
+## Physical T7-v1 result: XPC transport invalidation (08:58 UTC, Watch6,18 23U95)
+
+The real developer-signed Watch app reported:
+```
+NSXPCConnection=present NSXPCInterface=present
+Apple protocol in current process=present
+style44 face type=bundle
+Zeus bundle ID=com.apple.NTKZeusFaceBundle
+Hermes2025 ID=com.apple.Hermes2025Face
+CONTROL invalid face type -> UNKNOWN: timeout
+Transport NSError domain=NSCocoaErrorDomain code=4099
+Native Zeus validation -> UNKNOWN: timeout
+Native Hermes2025 validation -> UNKNOWN: timeout
+```
+
+**Verdict: no completed validator RPC**, neither ALLOW nor DENY for Hermès.
+`NSCocoaErrorDomain Code=4099` is an invalidated XPC connection.
+The app had used the runtime `initWithServiceName:` initializer, which
+usually names a bundle-scoped XPC service, not necessarily a global
+`launchd` Mach service. Therefore T2's valid bootstrap Mach send right
+was NOT evidence the chosen XPC transport was correct.
+
+**T7-v1 design flaw:** the proxy transport error callback saved a message
+but did not signal the semaphore used for each individual RPC; the app
+then waited three 5-second periods and emitted misleading per-face
+timeouts.
+
+**Actual patch** in `BQClockKitReadonlyValidation.m`:
+- Replace `initWithServiceName:` with a checked runtime call to
+  `initWithMachServiceName:options:` using options 0, distinct from
+  privileged namespace. Neither API confers server entitlement.
+- Proxy error handler now calls the same completion gate as the validator
+  reply and includes `localizedDescription`, `NSDebugDescription`
+  and original domain/code. No unnecessary 5-second wait on 4099.
+- A transport error or missing response to the deliberately invalid
+  control causes the real Zeus and Hermès checks to be **SKIPPED**.
+  This prevents labeling a disconnected transport as face rejection.
+- The method still supports only
+  `validateFaceType:faceBundleId:completionHandler:`; it never
+  imports or adds a face or writes a protected cache.
+
+[Source contract #44272030508](https://github.com/mkalter/TESTAPP/actions/runs/44272030508)
+**SUCCESS**. [Unsigned iPhone + Watch build #44271968893](https://github.com/mkalter/TESTAPP/actions/runs/44271968893)
+**SUCCESS**, artifact `unsigned-iphone-watch-ipa` ID `14412737902`.
+**Physical T7-v2 is NOT yet run**. One only needs to repeat optional T7,
+not T1–T6.
+
+Apple documentation distinguishes [service-name initializer](https://developer.apple.com/documentation/foundation/nsxpcconnection/init%28servicename%3A%29)
+from [Mach-service initializer](https://developer.apple.com/documentation/foundation/nsxpcconnection/init%28machservicename%3Aoptions%3A%29).
+A successful Mach connection still doesn't prove the *server* accepts
+ordinary Watch-app clients.
+
+### Next offline check
+
+The new original ClockKit dyld image trace in
+[run #44272362451](https://github.com/mkalter/TESTAPP/actions/runs/44272362451)
+will attempt SHA-pinned Objective-C IMP recovery from the exact
+`225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad`
+original Watch ClockKit and trace the actual method
+`_queue_setupConnectionIfNeeded`. This can distinguish the shipped
+watchOS client initializer from our hypothesis without touching the Watch.
