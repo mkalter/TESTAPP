@@ -26,6 +26,14 @@ AVAILABILITY_INTEREST=(
     "NTKFaceBundleManager faceBundleForBundleIdentifier:",
     "NTKFaceStyleIsAvailable",
 )
+IDENTITY_INTEREST=(
+    "CLKDevice _loadDeviceInfo",
+    "CLKDevice sizeClass",
+    "CLKDevice deviceCategory",
+    "CLKDevice collectionType",
+    "CLKDevice deviceBrand",
+    "CLKDevice isUltra",
+)
 MIGRATION_INTEREST=(
     "NTKFace faceWithJSONObjectRepresentation:forDevice:forMigration:",
     "NTKFace faceWithJSONObjectRepresentation:forDevice:",
@@ -69,7 +77,7 @@ def main():
     p.add_argument("--input",required=True)
     p.add_argument("--sha256",required=True)
     p.add_argument("--out",required=True)
-    p.add_argument("--profile",choices=("clockkit","availability","migration"),default="clockkit")
+    p.add_argument("--profile",choices=("clockkit","availability","migration","identity"),default="clockkit")
     a=p.parse_args()
     b=Path(a.input).read_bytes()
     digest=hashlib.sha256(b).hexdigest()
@@ -77,7 +85,8 @@ def main():
     tab,symbols=macho_symbols(b)
     sect=sections(b)
     patterns=(INTEREST if a.profile=="clockkit" else
-              AVAILABILITY_INTEREST if a.profile=="availability" else MIGRATION_INTEREST)
+              AVAILABILITY_INTEREST if a.profile=="availability" else
+              MIGRATION_INTEREST if a.profile=="migration" else IDENTITY_INTEREST)
     target=[m for m in symbols if any(t in m["name"] for t in patterns)]
     symbol_names_by_vm={}
     for symbol in symbols:
@@ -92,7 +101,8 @@ def main():
         nxt=next((x for x in values if x>addr),addr+512)
         # A larger bounded window for the exact JSON migration constructor;
         # the usual short function scope remains unchanged.
-        limit=2048 if a.profile=="migration" else 512
+        limit=(8192 if a.profile=="identity" else
+               2048 if a.profile=="migration" else 512)
         maxbytes=min(limit,max(4,nxt-addr),part["size"]-(addr-part["vm"]))
         if maxbytes<4:continue
         ins=[]
