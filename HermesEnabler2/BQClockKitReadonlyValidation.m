@@ -50,12 +50,16 @@ static NSString *BQCKSignedBundleIdentifier(NSString *bundlePath) {
     return [bundleID isKindOfClass:NSString.class] && [bundleID length] ?
         bundleID : nil;
 }
-static NSString *BQCKRequestValidation(id remote,NSString *faceType,NSString *bundleID) {
+// This per-request proxy uses the *same* completion gate for both success
+// and transport errors. 4099 must finish immediately rather than time out.
+static NSString *BQCKRequestValidation(id connection,
+                                        NSString *faceType, NSString *bundleID) {
     __block NSString *result=nil;
     dispatch_semaphore_t semaphore=dispatch_semaphore_create(0);
+    NSObject *gate=[NSObject new];
     __block BOOL responded=NO;
     void (^finish)(NSString *)=^(NSString *value) {
-        @synchronized (semaphore) {
+        @synchronized (gate) {
             if (responded) return;
             responded=YES;
             result=[value copy];
@@ -63,7 +67,14 @@ static NSString *BQCKRequestValidation(id remote,NSString *faceType,NSString *bu
         }
     };
     @try {
-        id<BQClockKitReadOnlyValidation> proxy=remote;
+        id<BQClockKitReadOnlyValidation> proxy=
+            [connection remoteObjectProxyWithErrorHandler:^(NSError *error) {
+                NSString *debug=error.userInfo[@"NSDebugDescription"] ?: @"none";
+                finish([NSString stringWithFormat:
+                    @"TRANSPORT_ERROR domain=%@ code=%ld message=%@ debug=%@",
+                    error.domain, (long)error.code,
+                    error.localizedDescription ?: @"unknown",debug]);
+            }];
         [proxy validateFaceType:faceType faceBundleId:bundleID
              completionHandler:^(NSError *error) {
             if (!error) finish(@"REPLY success (VALIDATION ONLY, NOT FACE ADD)");
@@ -86,6 +97,7 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
           NSDate.date,BQCKRunName(@"hw.machine"),BQCKRunName(@"kern.osversion")],
        [NSString stringWithFormat:@"App=%@",NSBundle.mainBundle.bundleIdentifier ?: @"unknown"],
        @"Explicit single opt-in; only validateFaceType:faceBundleId:completionHandler: RPC.",
+       @"T7 revision 2: previously initWithServiceName returned transport 4099; now test Mach service initializer.",
        @"No openWatchFaceURL, no imports, addFace, library reset, protected write or token.",
        @"Even a successful validation DOES NOT enable an original native Hermès face.",nil];
     Class connClass=NSClassFromString(@"NSXPCConnection");
@@ -109,48 +121,53 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
     [lines addObject:@"If actual style or bundle metadata absent, native checks SKIPPED (no guesses)."];
     id connection=nil;
     @try {
-        // initWithServiceName: is declared unavailable in the Watch SDK.
-        // Never directly link an unavailable method: query the live runtime
-        // and call its IMP only if the exact selector exists on the device.
-        SEL serviceInit=NSSelectorFromString(@"initWithServiceName:");
-        if (![connClass instancesRespondToSelector:serviceInit]) {
-            [lines addObject:@"UNKNOWN: service connection initializer missing at runtime on watchOS"];
+        // T7 prior physical result: using initWithServiceName: on this global
+        // Mach name gave NSCocoaErrorDomain 4099. That initializer targets a
+        // bundle-scoped XPC service, not a launchd-managed Mach service.
+        // Deliberately test the *different* Mach-service transport, without
+        // claiming it bypasses the daemon's normal client authorization.
+        SEL machInit=NSSelectorFromString(@"initWithMachServiceName:options:");
+        if (![connClass instancesRespondToSelector:machInit]) {
+            [lines addObject:@"UNKNOWN: Mach service initializer unavailable at runtime on watchOS"];
             return BQCKWriteOwnReport(lines);
         }
         id uninitialized=[connClass alloc];
-        IMP impl=[uninitialized methodForSelector:serviceInit];
+        IMP impl=[uninitialized methodForSelector:machInit];
         if (!impl) {
-            [lines addObject:@"UNKNOWN: service initializer IMP unavailable"];
+            [lines addObject:@"UNKNOWN: Mach service initializer IMP unavailable"];
             return BQCKWriteOwnReport(lines);
         }
-        typedef id (*ServiceInit)(id,SEL,NSString *);
-        connection=((ServiceInit)impl)(uninitialized,serviceInit,
-            @"com.apple.ClockKit.CLKWatchFaceLibrary");
+        typedef id (*MachServiceInit)(id,SEL,NSString *,NSUInteger);
+        [lines addObject:@"Transport=initWithMachServiceName:options: options=0 (Mach lookup, NO privileged option)"];
+        connection=((MachServiceInit)impl)(uninitialized,machInit,
+            @"com.apple.ClockKit.CLKWatchFaceLibrary",0);
         if (!connection) {
-            [lines addObject:@"UNKNOWN: runtime service initializer returned nil"];
+            [lines addObject:@"UNKNOWN: runtime Mach service initializer returned nil"];
             return BQCKWriteOwnReport(lines);
         }
         id iface=[ifaceClass interfaceWithProtocol:@protocol(BQClockKitReadOnlyValidation)];
         [connection setRemoteObjectInterface:iface];
         [connection resume];
-        // Invalid safe control: response means method can be reached; error is expected.
-        __block NSString *transportError=nil;
-        id remote=[connection remoteObjectProxyWithErrorHandler:^(NSError *e) {
-            @synchronized (lines) {
-                transportError=[NSString stringWithFormat:@"Transport NSError domain=%@ code=%ld",
-                                   e.domain,(long)e.code];
-            }
-        }];
+        // A transport failure is a transport failure, NOT a denied face.
         [lines addObject:@"CONTROL: intentionally nonexistent face type (no import)"];
-        [lines addObject:BQCKRequestValidation(remote,
-          @"__HermesEnabler_ReadOnly_Invalid__", @"__invalid_bundle__")];
-        if (transportError) [lines addObject:transportError];
-        if (style44.length && (zeus.length || hermes25.length)) {
+        NSString *control=BQCKRequestValidation(connection,
+          @"__HermesEnabler_ReadOnly_Invalid__", @"__invalid_bundle__");
+        [lines addObject:control];
+        if ([control hasPrefix:@"TRANSPORT_ERROR"] ||
+            [control hasPrefix:@"UNKNOWN"]) {
+            [lines addObject:@"SKIPPED: native face checks. No successful XPC reply for invalid control."];
+        } else if (style44.length && (zeus.length || hermes25.length)) {
             for (NSString *bundle in @[zeus ?: @"", hermes25 ?: @""]) {
                 if (!bundle.length) continue;
                 [lines addObject:[NSString stringWithFormat:@"NATIVE VALIDATION only: type=%@ bundle=%@",
                                   style44,bundle]];
-                [lines addObject:BQCKRequestValidation(remote,style44,bundle)];
+                NSString *out=BQCKRequestValidation(connection,style44,bundle);
+                [lines addObject:out];
+                if ([out hasPrefix:@"TRANSPORT_ERROR"] ||
+                    [out hasPrefix:@"UNKNOWN"]) {
+                    [lines addObject:@"STOP: XPC transport failed during native validation"];
+                    break;
+                }
             }
         }
     } @catch (NSException *exc) {
