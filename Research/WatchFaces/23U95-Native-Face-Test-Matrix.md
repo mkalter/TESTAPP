@@ -287,3 +287,54 @@ to authorize installation in the normal native gallery.
 `44277418407` artifact); run **T8 only** and send
 `clockkit-availability-differential.txt`. Do not repeat T1–T7.
 No protected write attempted, no native Hermès enabled.
+
+
+## 18 November 2026 — physical T8 positive control PASS (09:50:24 UTC)
+
+**Physical user-provided report** from `Watch6,18`/watchOS `23U95`,
+signed app `com.example.HermesEnabler.Q78LAAPA9S.Q78LAAPA9S.watchkitapp`:
+
+```
+Local NTKFaceDescriptor=present CLKDevice=present currentDevice=present
+initWithFaceStyle=present isAvailableForDevice=present
+POSITIVE CONTROL selected local available style=0 type=utility after 2 descriptor checks
+LOCAL native Zeus availability: NOT AVAILABLE (local descriptor)
+LOCAL native Hermès2025 availability: NOT AVAILABLE (local descriptor)
+Transport=real Apple Mach service options 0x1000
+POSITIVE remote control: original standard type=utility style=0 (locally available=YES)
+REPLY success (VALIDATION ONLY, NOT FACE ADD)
+POSITIVE CONTROL PASS: ClockKit accepted known available standard style.
+NATIVE Hermès comparison: style=bundle ID=com.apple.NTKZeusFaceBundle
+REPLY NSError domain=CLKWatchFaceLibraryErrorDomain code=4
+NATIVE Hermès comparison: style=bundle ID=com.apple.Hermes2025Face
+REPLY NSError domain=CLKWatchFaceLibraryErrorDomain code=4
+```
+
+**Decision:** The same physically functioning `ClockKit` read-only
+validator accepts a *locally proven compatible original Apple utility
+style* and rejects **both actual original signed Hermès bundle IDs**
+with `CLKWatchFaceLibraryErrorCodeFaceNotAvailable` (4). The
+client transport, server method, face style parser, and a general
+device context are all operational. Strong evidence of **selective
+FaceBundle availability gating on this Ultra 1**. This is not a
+generic XPC failure, but it does not by itself prove which individual
+`isRestrictedForDevice:` subcondition caused the rejection.
+
+**Next separate T9 (no on-device result yet)**: call the original
+in-process, locally resolved
+`NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:forMigration:`
+with `NO` then `YES` then `NO` for each of the two original signed
+Hermès IDs; log whether the *local returned bundle object* changes and
+the genuine face class's `isRestrictedForDevice:` result.
+This is **not** Apple's mutating library migration, and **never**
+calls `_migrateFacesInStore:`, `_fromSyncResetWithFaces:`,
+`setOrderedUUIDs:`, `synchronize`, or any Carousel API.
+It may load signed Apple bundle metadata into a cache in this
+app process; no persistent library/gallery writing requested.
+
+The original 23U95 NanoTimeKit disassembly proves
+`forMigration=YES` skips a specific
+`isRestrictedForDevice:` call in *bundle manager lookup*.
+Do not interpret a nonnil migration lookup as native Hermès
+activation, persistent native library insertion, or rendering.
+**T9's real Watch result remains UNKNOWN until actual log received.**
