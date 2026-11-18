@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline contract tests for the four *read-only* watchOS native face probes.
+"""Offline contract tests for the five *read-only* watchOS native face probes.
 
 This checks static code invariants, not iPhone/Watch sandbox behavior.
 Actual device access requires running the signed watchOS app on 23U95.
@@ -20,6 +20,7 @@ tests = {
     "BQRunNativeFaceBootstrapLookup": "native-face-bootstrap-lookup.txt",
     "BQRunNativeFaceStorePolicy": "native-face-store-policy.txt",
     "BQRunNativeFaceBundleInventory": "native-face-bundle-inventory.txt",
+    "BQRunProtectedWriterServiceGate": "protected-writer-service-gate.txt",
 }
 for func, report in tests.items():
     assert re.search(r"NSString\s*\*\s*" + func + r"\s*\(void\)", objc), func
@@ -34,6 +35,9 @@ assert '"com.apple.NanoTimeKit.complication"' in objc
 assert '"com.apple.nanofacegallery.gallerybroker.server"' in objc
 assert '"com.apple.nanotimekit.collectionserver"' in objc
 assert 'sandbox_check' in objc and 'bootstrap_look_up' in objc
+assert '@"com.apple.tccd"' in objc and '@"com.apple.mobile.softwareupdated"' in objc
+assert 'st.st_uid == geteuid()' in objc
+assert 'T5 · TCC / Software Update' in swift
 assert 'task_get_special_port(mach_task_self()' not in objc, (
     "Private direct API declared unavailable for watchOS: resolve dynamically")
 assert 'O_RDONLY | O_NOFOLLOW | O_CLOEXEC' in objc
@@ -53,7 +57,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: four named watchOS probes, their iPhone log transfer and paths")
+print("PASS: five named watchOS probes, their iPhone log transfer and paths")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
