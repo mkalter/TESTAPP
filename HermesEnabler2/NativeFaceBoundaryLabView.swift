@@ -15,7 +15,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T6 · Apple-daemonrechten", "Probeer uitsluitend te lezen of tccd zelf schrijfrechten heeft."),
         ("T7 · ClockKit-validatie", "Vraag Apple alleen of een wijzerplaattype geldig is; niets installeren."),
         ("T8 · Positieve Apple-controle", "Vergelijk een aantoonbaar beschikbare Apple-wijzerplaat met Hermès."),
-        ("T9 · Migratie-lookup", "Vergelijk lokaal de gewone en Apple's migratiegerichte Hermès-FaceBundle-lookup.")
+        ("T9 · Migratie-lookup", "Vergelijk lokaal de gewone en Apple's migratiegerichte Hermès-FaceBundle-lookup."),
+        ("T10 · Hermès 2025-apparaatcontrole", "Meet echte categorie, merk en collectie van de Watch zonder MobileGestalt te veranderen.")
     ]
 
     var body: some View {
@@ -82,6 +83,9 @@ struct NativeFaceBoundaryLabView: View {
             case 8:
                 name = "clockkit-migration-local-differential.txt"
                 output = BQRunClockKitMigrationLookupDifferential() as String
+            case 9:
+                name = "hermes2025-live-identity-gates.txt"
+                output = BQRunOriginalHermes2025IdentityGates() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
