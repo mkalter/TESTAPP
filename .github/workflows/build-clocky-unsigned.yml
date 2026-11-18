@@ -42,7 +42,7 @@ jobs:
           # Only arm64 is requested in this CI build. Reduce target lists in
           # device stubs to arm64; preserve install names and export lists.
           find clocky-source -path '*watchos-arm64_arm64_32_arm64e_arm64e.x1*' -name '*.tbd' -print0 | while IFS= read -r -d '' stub; do
-            sed -i '' -E 's/^([[:space:]]*targets:[[:space:]]*).*/\\1[ arm64-watchos ]/' "$stub"
+            sed -i '' 's/armv7k-watchos, arm64-watchos, arm64e-watchos, arm64e.x1-watchos, arm64_32-watchos/arm64-watchos/g' "$stub"
           done
           head -n 5 clocky-source/NanoTimeKit.xcframework/watchos-arm64_arm64_32_arm64e_arm64e.x1/NanoTimeKit.framework/NanoTimeKit.tbd
 
