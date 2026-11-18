@@ -154,3 +154,69 @@ The offline source regression contract for six Watch labs passed in
 [GitHub Actions #44264840267](https://github.com/mkalter/TESTAPP/actions/runs/44264840267).
 The iPhone+Watch unsigned build is separately checked in
 [GitHub Actions #44264801111](https://github.com/mkalter/TESTAPP/actions/runs/44264801111).
+
+
+## Final physical T6 + verified original helper authority (2026-11-18)
+
+On Watch6,18 / 23U95, `BQRunTrustedDaemonPolicyDifferential` returned:
+`UNKNOWN: proc_listallpids list failed=1 (Operation not permitted)`.
+This **does not imply a TCC or MobileGestaltHelper DENY**. It prevented
+cross-PID process identity and kernel policy checks entirely. No reason to
+reissue this identical test.
+
+An independently retrieved **exact original** Watch6,18/23U95
+`com.apple.tccd.sb` (529 lines), from [kernel sandbox run #44175646728](https://github.com/mkalter/TESTAPP/actions/runs/44175646728)
+explicitly grants TCC-local writes (`${HOME}/Library/TCC`, CompanionSync,
+process temp). It has no direct unrestricted MG SystemGroup write grant.
+The 8,078-line inherited `baseline` has `common-mobilegestalt-rules`
+for **read**/metadata and conditional SystemGroup write authorization.
+This does not resolve TCC's effective runtime entitlements/extensions.
+
+### Actual MobileGestaltHelper CodeSignature entropy and ABI
+
+[Original signed-authority run #44266845679](https://github.com/mkalter/TESTAPP/actions/runs/44266845679)
+and [original method-IMP run #44267247147](https://github.com/mkalter/TESTAPP/actions/runs/44267247147)
+both succeeded using original 76,112-byte
+`/usr/libexec/MobileGestaltHelper`,
+SHA-256 `0e0c05244a3d35753e948783372f18e615ae2032cf7b750dd7a9cc57cfb3626e`.
+
+**Real Mach-O signature** (not mere strings):
+`LC_CODE_SIGNATURE` SuperBlob offset 54,736 size 21,376, with XML slot
+`CSSLOT_ENTITLEMENTS=5` and DER slot 7. XML entitlements actually say:
+- `com.apple.private.security.storage.MobileGestaltCache=true`
+- `com.apple.security.system-groups=[systemgroup.com.apple.mobilegestaltcache, systemgroup.com.apple.mobileactivationd]`
+- `com.apple.security.system-group-containers` is absent.
+
+The independently extracted original launchd manifest announces service
+`com.apple.mobilegestalt.xpc` for the helper, normally UID identity
+`mobile` or feature-flag-dependently `_mobilegestalthelper`.
+T2 already established this specific Mach name can be looked up from the
+development-signed app (`kr=0`), but this does not confer a client writer.
+
+**Verified original ARM64_32 method list**: 1 relative list, 11 method
+implementations. Among them:
+- `listener:shouldAcceptNewConnection:` at `0x4bbc`: sets exported
+  XPC interface/object, resumes connection, returns `YES`;
+- `getServerAnswerForQuestion:reply:` at `0x5110`: read-only server
+  MG-answer path, **already physically tested on this build** and replied
+  with MobileGestalt application error **9**, no answer, for
+  DeviceBrand, hashed DeviceBrand, BuildVersion and ProductType;
+- `rebuildCache:` at `0x55f0`: reply-handler-only argument, invokes
+  private cache-rebuild function (may unlink existing protected cache);
+- `setCacheSentinel:` at `0x5714`: reply-handler-only argument,
+  dispatches `setCacheSentinel` with a fixed destination;
+- `getSpringboardRegionOverride:reply:` is another read-only
+  method, not a cache-write API.
+
+The three selected IMPs and their original selector calls were
+independently inspected in the second artifact. The read-only XPC
+server query returning error 9 was **already documented** at
+https://github.com/pookjw/HermesEnabler/issues/17 and must not be
+presented as a fresh test opportunity.
+
+**Current decision:** helper's signed entitlement is real, but known
+exported *mutators* are rebuild/sentinel-only. These do **not** accept
+controlled replacement bytes for existing `com.apple.MobileGestalt.plist`.
+T6 is not repeatable from this sandbox and no arbitrary-content helper
+setter was established. The genuine stock native Hermès system-face
+goal remains unsolved; no protected file mutation is justified.
