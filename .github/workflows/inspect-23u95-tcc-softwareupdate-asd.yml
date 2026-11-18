@@ -17,20 +17,29 @@ jobs:
     timeout-minutes: 35
     env:
       IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
-      TOOL_URL: https://github.com/blacktop/ipsw/releases/download/v3.1.749/ipsw_3.1.749_linux_x86_64.tar.gz
     steps:
       - uses: actions/checkout@v4
-      - name: Install fixed-version read-only firmware tool
+      - name: Clone original read-only firmware parser source
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/ipswcli extracted audit/binary audit/launch
-          curl -fLsS --retry 3 --connect-timeout 20 "$TOOL_URL" -o /tmp/ipswcli/ipsw.tar.gz
-          tar -xzf /tmp/ipswcli/ipsw.tar.gz -C /tmp/ipswcli
-          chmod +x /tmp/ipswcli/ipsw
-          /tmp/ipswcli/ipsw version > audit/ipsw-version.txt 2>&1
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > audit/ipsw-source-revision.txt
           echo "Exact source: Apple Watch Ultra 1 / Watch6,18 / 23U95" > audit/provenance.txt
           echo "$IPSW_URL" >> audit/provenance.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build parser with verified --ranged support
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 720 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw)
+          /tmp/ipswcli/ipsw version > audit/ipsw-version.txt 2>&1
+          /tmp/ipswcli/ipsw extract --help > audit/ipsw-extract-help.txt 2>&1
+          grep -q -- '--ranged' audit/ipsw-extract-help.txt
       - name: Read only userland services and launch configuration from 23U95
         shell: bash
         run: |
