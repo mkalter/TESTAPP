@@ -64,6 +64,16 @@ assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
 assert 'BQCKKnownAvailableStandardFace' in t7
 assert 'NTKFaceDescriptor' in t7 and 'CLKDevice' in t7
+assert 'T9 · Migratie-lookup' in swift
+assert 'BQRunClockKitMigrationLookupDifferential' in headers
+assert 'BQRunClockKitMigrationLookupDifferential()' in swift
+assert '"clockkit-migration-local-differential.txt"' in transport
+assert 'faceBundleForBundleIdentifier:onDevice:forMigration:' in t7
+assert 'BQCKFaceTypeForStyle(44)' in t7
+assert 'lookup(manager,migrateSel,identifier,device,NO)' in t7
+assert 'lookup(manager,migrateSel,identifier,device,YES)' in t7
+assert 'No native FaceStore/Carousel mutation' in t7
+assert 'BQRunClockKitMigrationLookupDifferential()' not in swift.split("private func runAll()",1)[1]
 assert 'BQCKLocalBundleAvailability' in t7
 assert 'initWithBundleIdentifier:' in t7
 assert 'LOCAL native Zeus availability:' in t7
@@ -110,7 +120,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six no-RPC watchOS probes plus T7/T8 separately opt-in read-only ClockKit validations")
+print("PASS: six baseline probes, T7/T8 XPC validation and separate T9 local migration lookup")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
