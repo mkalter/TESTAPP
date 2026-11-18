@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Six independently runnable read-only tests of Apple's *native* watchOS
+/// Six no-RPC tests plus one separately opt-in read-only XPC validation test of Apple's *native* watchOS
 /// ClockFace / NanoTimeKit availability chain. No watch faces are installed.
 struct NativeFaceBoundaryLabView: View {
     @State private var report = "Kies één test. De volledige log wordt naar de iPhone gestuurd."
@@ -12,7 +12,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T3 · Systeemopslag", "Bestaan de NanoTimeKit-mappen en welke lees-/schrijfrechten meldt het OS?"),
         ("T4 · Originele FaceBundles", "Zijn Zeus/Hermès2025-bundels op de Watch via het bestandssysteem zichtbaar?"),
         ("T5 · TCC / Software Update", "Controleren welke diensten bereikbaar lijken en wie MobileGestalt bezit."),
-        ("T6 · Apple-daemonrechten", "Probeer uitsluitend te lezen of tccd zelf schrijfrechten heeft.")
+        ("T6 · Apple-daemonrechten", "Probeer uitsluitend te lezen of tccd zelf schrijfrechten heeft."),
+        ("T7 · ClockKit-validatie", "Vraag Apple alleen of een wijzerplaattype geldig is; niets installeren.")
     ]
 
     var body: some View {
@@ -20,7 +21,7 @@ struct NativeFaceBoundaryLabView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Native Hermès · systeemonderzoek")
                     .font(.headline)
-                Text("Deze tests controleren Apple's eigen ClockFace/Carousel. Het zijn geen nepwijzerplaten, imports of schrijfpogingen.")
+                Text("T1–T6 meten rechten. T7 stuurt één optionele, alleen-lezende ClockKit-validatie; niets wordt geïnstalleerd.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -70,6 +71,9 @@ struct NativeFaceBoundaryLabView: View {
             case 5:
                 name = "trusted-daemon-policy-differential.txt"
                 output = BQRunTrustedDaemonPolicyDifferential() as String
+            case 6:
+                name = "clockkit-readonly-face-validation.txt"
+                output = BQRunClockKitReadOnlyFaceValidation() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
