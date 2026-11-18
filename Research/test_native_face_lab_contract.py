@@ -52,7 +52,9 @@ assert '5*NSEC_PER_SEC' in t7  # bounded XPC response wait; no infinite blocking
 assert 'initWithMachServiceName:options:' in t7
 assert 'initWithServiceName:"' not in t7  # only original failure mentioned in logs
 assert 'TRANSPORT_ERROR' in t7 and 'SKIPPED: native face checks' in t7
-assert '@"com.apple.ClockKit.CLKWatchFaceLibrary",0' in t7
+assert 'const NSUInteger originalMachOptions = (NSUInteger)0x1000' in t7
+assert '@"com.apple.ClockKit.CLKWatchFaceLibrary",originalMachOptions' in t7
+assert 'it DOES NOT elevate our app' in t7
 assert 'BQCKRequestValidation(connection,' in t7
 assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
