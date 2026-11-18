@@ -338,3 +338,46 @@ The original 23U95 NanoTimeKit disassembly proves
 Do not interpret a nonnil migration lookup as native Hermès
 activation, persistent native library insertion, or rendering.
 **T9's real Watch result remains UNKNOWN until actual log received.**
+
+
+## T9 physically confirmed + T10 targeted read-only classification — 18 Nov 10:06 UTC
+
+**Exact user Watch6,18 / 23U95 T9**:
+- Original signed Zeus/Poodle `com.apple.NTKZeusFaceBundle`: normal NO = NIL; migration YES = NIL; normal recheck NO = NIL. **No lookup bypass observed for Zeus**.
+- Original signed Hermès2025 `com.apple.Hermes2025Face`: normal NO = NIL; migration YES = **NONNIL** genuine `NTKHermes2025FaceBundle.Hermes2025Face`; face-class `isRestrictedForDevice:YES`; normal recheck NO = NIL. **In-process migration exception is physically proven** but native FaceStore insert, Carousel rendering and persistence remain unproven.
+
+### Why DeviceBrand-only might still fail even with MobileGestalt write authority
+
+Exact original binary `NTKHermes2025FaceBundle` SHA256
+`ca8f29bd478483d5bfcd6a30cae9f324a37e2655e0515a27929596df4dc9af49`
+was independently reextracted/verified in
+[firmware run #44283136629](https://github.com/mkalter/TESTAPP/actions/runs/44283136629).
+The real restriction helper at `0x46b8` branches on deviceCategory
+whitelist `{2,3,5}` (`tbz w21,#0,0x4770` at `0x4704`, restricted
+`mov w0,#1` at `0x4770`) *before* later `collectionType==5` at
+`0x4744`. The original same-build CLKDevice loader derived category
+from the sizeClass mapping; category 4/6 mark Ultra in the previously
+independent [RO23 V13 original code audit](https://github.com/pookjw/HermesEnabler/issues/17).
+`DeviceBrand=1` selects `collectionType=5` but does not by itself
+change that separate size-class-derived category. **A DeviceBrand-only
+write is therefore not a proven Hermès2025 solution.**
+
+### New T10 (optional; not yet physically executed)
+
+`Native Face Lab → T10 · Hermès 2025-apparaatcontrole` reads only
+`CLKDevice currentDevice` getters:
+`sizeClass`, `deviceCategory`, `deviceBrand`, `collectionType`,
+`isUltra`, `supportsFall2025FacesCapability`. It evaluates the
+actual on-device value against Hermes2025 category whitelist
+`{2,3,5}` and `collectionType==5`. Absent getters return UNKNOWN;
+no runtime spoofing, MG cache write, FaceStore or Carousel mutation.
+
+**Build verified**: [iPhone/Watch unsigned IPA #44283783343](https://github.com/mkalter/TESTAPP/actions/runs/44283783343)
+SUCCESS, artifact ID `14418416811`, containing full iPhone host and
+embedded Watch target. [Safety contract #44283835742](https://github.com/mkalter/TESTAPP/actions/runs/44283835742)
+SUCCESS. Normal developer signing required for physical run.
+
+The independent [original 23U95 ClockKit `_loadDeviceInfo` audit #44284560059](https://github.com/mkalter/TESTAPP/actions/runs/44284560059)
+tests whether sizeClass/category are driven by a property MobileGestalt
+could change, rather than assuming `main-screen-class` changes it.
+No native original Hermès face has been persisted.
