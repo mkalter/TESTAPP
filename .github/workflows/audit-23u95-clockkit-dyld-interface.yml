@@ -8,6 +8,7 @@ on:
       - '.github/workflows/audit-23u95-clockkit-dyld-interface.yml'
       - 'Research/firmware-23u95/trace_clockkit_xpc_transport.py'
       - 'Research/firmware-23u95/recover_arm64_32_objc_lists.py'
+      - 'Research/firmware-23u95/trace_clockkit_macho_symbols.py'
   workflow_dispatch:
 
 permissions:
@@ -94,6 +95,14 @@ jobs:
                   | tee audit/clockkit-IMP-trace-summary.txt || echo "No validated ClockKit client callsites" > audit/callsite-limitation.txt
               fi
             fi
+          fi
+          # Independent source-symbol route avoids dyld shared-cache
+          # optimized direct selector method-list pointers.
+          if [[ -n "$TARGET" ]] && [[ "$EXPECTED" == '225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad' ]]; then
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$TARGET" --sha256 "$EXPECTED" \
+              --out audit/original-clockkit-symbol-call-trace.json \
+              | tee audit/clockkit-symbol-call-summary.txt || echo 'LC_SYMTAB symbol route unavailable: record the actual error' > audit/symbol-limitation.txt
           fi
           echo 'Mach service and selector existence are not proof of client RPC acceptance or native Hermès install.' > audit/limitations.txt
           rm -rf extracted cache
