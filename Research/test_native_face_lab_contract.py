@@ -35,6 +35,7 @@ assert '"com.apple.NanoTimeKit.complication"' in objc
 assert '"com.apple.nanofacegallery.gallerybroker.server"' in objc
 assert '"com.apple.nanotimekit.collectionserver"' in objc
 assert 'sandbox_check' in objc and 'bootstrap_look_up' in objc
+assert 'BOOTSTRAP_NOT_PRIVILEGED' in objc and 'BOOTSTRAP_UNKNOWN_SERVICE' in objc
 assert '@"com.apple.tccd"' in objc and '@"com.apple.mobile.softwareupdated"' in objc
 assert 'st.st_uid == geteuid()' in objc
 assert 'T5 · TCC / Software Update' in swift
