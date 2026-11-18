@@ -61,6 +61,14 @@ ARM64_32 Objective-C `ipsw class-dump` returned EOF while reading metadata on th
 
 The earlier initial fetch matched an irrelevant `dasd` launch manifest due to a broad `asd` substring. That was corrected in the subsequent verified extraction; it is **not** evidence about the App Store `asd` daemon.
 
+## 18 November: exact kernel Mach lookup source check
+
+[Original 23U95 `sb query mach-lookup` run #44253023952](https://github.com/mkalter/TESTAPP/actions/runs/44253023952), artifact `14403744371`, independently queried both `com.apple.tccd` and `com.apple.mobile.softwareupdated` in the original hash-verified kernel.
+
+**Critical interpretation:** the parser's outputs contained **919 rule matches for *each* service**, with nearly identical profile counts and baseline/container guard trees despite different names. The tool is enumerating conditional rules / possible matches, **not resolving effective `mach-lookup` access for a developer-signed Watch app**. In particular, the `container` profile showed 35 candidate allow clauses for both names; these cannot be labelled reachable without fully evaluating global-name, xpc-service-name, entitlement, profile flag and exception predicates. The script's raw JSON is preserved for reproducibility. Neither TCC reachability nor Software Update reachability was established by this static tool.
+
+A useful low-risk diagnostic on a real development-signed Watch build would be a **preflight-only** `sandbox_check` of `mach-lookup` for these exact names, without sending XPC messages or changing files. That result is **not yet available**. A positive preflight would still not bypass the service's own entitlement checks, the service's sandbox, or MobileGestalt POSIX permissions.
+
 ## Data required to identify a true new writer
 
 1. An actual vulnerable service entrypoint with client-reachable IPC on **23U95** that accepts file path and **arbitrary content**.
