@@ -65,3 +65,46 @@ Apple reference: https://support.apple.com/en-us/149037
 
 **Status:** original executable + real physical watch boundaries verified;
 no accepted TCC path/content writer, no protected plist mutation, no native unlock.
+
+
+## Updated: original IMPs and first codeflow (18 November)
+
+The new chained-32bit selector pointer decoder is **validated against real
+`__objc_selrefs` entries**. One raw word `0x0408766e` masks to target
+`0x8766e`, yielding original `stringByResolvingRealPathWithError:`;
+`0x04081acd` masks to `0x81acd`, yielding
+`getMigratedDBRelativeDirPath`. This matches Apple's
+`DYLD_CHAINED_PTR_32` 26-bit target representation; the pointer must then
+land within the original method-name section or it is rejected.
+
+- [Original firmware validated ObjC mapping run #44263100273](https://github.com/mkalter/TESTAPP/actions/runs/44263100273):
+  **72 verified relative lists**, **1,232 method names with IMP addresses**,
+  43 lists with security/path-related names.
+- [Bounded SHA-checked ARM64 disassembly run #44263378895](https://github.com/mkalter/TESTAPP/actions/runs/44263378895):
+  64 selected methods, genuine original instruction sequences, no execution.
+- **`getMigratedDBRelativeDirPath`** at `0x5341c`: just
+  `ADRP x0, 0x9c000; ADD x0, x0, 0x370; RET` — a fixed in-image
+  location, **not a client-controlled path argument**.
+- **`getMigratedDBDir`** at `0x53428`: constructs/looks up a directory
+  through internal helper calls; observed instructions do not by themselves
+  establish any client-supplied destination.
+- **`registerNewDBAtPath:`** at `0x718c`: moves the method's
+  `x2` argument into `x19`, later places it in a stack argument and
+  dispatches to another Objective-C selector stub at `0x63860`.
+  **This is the concrete next edge to resolve**, not proof of a vulnerability.
+- The verified bytecode implements separate normal database creation helpers
+  at `0x29830` and `0x59324`; their authorization and callers
+  remain unproven.
+
+The new `resolve_tccd_class_owners.py` recovers `class_t`→`class_ro`
+and `baseMethods` pointers with bounded 32-bit fixups. The new
+`resolve_tccd_selector_stubs.py` resolves original `ADRP/LDR` selector
+references for this and other bounded methods. Both are strictly **offline**;
+they do not submit any XPC request to the Watch.
+
+**Interpretation:** the direct migrated-relative-directory getter is a poorer
+vulnerability candidate than initially suspected, since it returns a
+constant rather than accepting a path. The registry method still takes a
+string argument; its caller and the object ultimately being updated must be
+traced before considering a safe app-owned test. No current evidence that
+`registerNewDBAtPath:` writes arbitrary existing binary plists.
