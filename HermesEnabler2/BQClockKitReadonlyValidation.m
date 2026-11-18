@@ -109,9 +109,25 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
     [lines addObject:@"If actual style or bundle metadata absent, native checks SKIPPED (no guesses)."];
     id connection=nil;
     @try {
-        connection=[[connClass alloc] initWithServiceName:@"com.apple.ClockKit.CLKWatchFaceLibrary"];
+        // initWithServiceName: is declared unavailable in the Watch SDK.
+        // Never directly link an unavailable method: query the live runtime
+        // and call its IMP only if the exact selector exists on the device.
+        SEL serviceInit=NSSelectorFromString(@"initWithServiceName:");
+        if (![connClass instancesRespondToSelector:serviceInit]) {
+            [lines addObject:@"UNKNOWN: service connection initializer missing at runtime on watchOS"];
+            return BQCKWriteOwnReport(lines);
+        }
+        id uninitialized=[connClass alloc];
+        IMP impl=[uninitialized methodForSelector:serviceInit];
+        if (!impl) {
+            [lines addObject:@"UNKNOWN: service initializer IMP unavailable"];
+            return BQCKWriteOwnReport(lines);
+        }
+        typedef id (*ServiceInit)(id,SEL,NSString *);
+        connection=((ServiceInit)impl)(uninitialized,serviceInit,
+            @"com.apple.ClockKit.CLKWatchFaceLibrary");
         if (!connection) {
-            [lines addObject:@"UNKNOWN: NSXPCConnection initWithServiceName gave nil"];
+            [lines addObject:@"UNKNOWN: runtime service initializer returned nil"];
             return BQCKWriteOwnReport(lines);
         }
         id iface=[ifaceClass interfaceWithProtocol:@protocol(BQClockKitReadOnlyValidation)];
