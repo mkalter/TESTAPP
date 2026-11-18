@@ -97,7 +97,7 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
           NSDate.date,BQCKRunName(@"hw.machine"),BQCKRunName(@"kern.osversion")],
        [NSString stringWithFormat:@"App=%@",NSBundle.mainBundle.bundleIdentifier ?: @"unknown"],
        @"Explicit single opt-in; only validateFaceType:faceBundleId:completionHandler: RPC.",
-       @"T7 revision 2: previously initWithServiceName returned transport 4099; now test Mach service initializer.",
+       @"T7 revision 3: exact original Watch6,18 ClockKit sets Mach XPC option 0x1000.",
        @"No openWatchFaceURL, no imports, addFace, library reset, protected write or token.",
        @"Even a successful validation DOES NOT enable an original native Hermès face.",nil];
     Class connClass=NSClassFromString(@"NSXPCConnection");
@@ -138,9 +138,16 @@ NSString *BQRunClockKitReadOnlyFaceValidation(void) {
             return BQCKWriteOwnReport(lines);
         }
         typedef id (*MachServiceInit)(id,SEL,NSString *,NSUInteger);
-        [lines addObject:@"Transport=initWithMachServiceName:options: options=0 (Mach lookup, NO privileged option)"];
+        // Verified original Watch6,18/23U95 ClockKit XPC client:
+        // -[CLKWatchFaceLibraryServer _queue_setupConnectionIfNeeded]
+        // 0x49c64378: mov w3, #0x1000, followed by service initializer
+        // 0x49c6437c: bl 0x49cccb20.
+        // This option selects launchd's privileged bootstrap namespace;
+        // it DOES NOT elevate our app or bypass any daemon authorization.
+        const NSUInteger originalMachOptions = (NSUInteger)0x1000;
+        [lines addObject:@"Transport=initWithMachServiceName:options: options=0x1000 (matches original ClockKit bootstrap selection)"];
         connection=((MachServiceInit)impl)(uninitialized,machInit,
-            @"com.apple.ClockKit.CLKWatchFaceLibrary",0);
+            @"com.apple.ClockKit.CLKWatchFaceLibrary",originalMachOptions);
         if (!connection) {
             [lines addObject:@"UNKNOWN: runtime Mach service initializer returned nil"];
             return BQCKWriteOwnReport(lines);
