@@ -1,0 +1,107 @@
+name: Inspect original Watch6,18 23U95 TCC and SoftwareUpdate dyld frameworks
+
+on:
+  push:
+    branches:
+      - research/23u95-protected-file-cves-20261117
+    paths:
+      - '.github/workflows/audit-23u95-tcc-softwareupdate-dyld.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch-original-dyld:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone known working original-source parser and set up
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ipsw-bin extracted libraries audit
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > audit/parser-source-commit.txt
+          echo "Original Apple Watch6,18 / watchOS 26.6.1 / 23U95" > audit/provenance.txt
+          echo "$IPSW_URL" >> audit/provenance.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build parser and verify supported ranged/dyld methods
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 760 go build -o /tmp/ipsw-bin/ipsw ./cmd/ipsw)
+          /tmp/ipsw-bin/ipsw version > audit/parser-version.txt 2>&1
+          /tmp/ipsw-bin/ipsw dyld extract --help > audit/dyld-help.txt 2>&1
+      - name: Extract only original ARM64_32 dyld shared cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32(\.[^/]+)?$'
+          echo "$PATTERN" > audit/dyld-pattern.txt
+          timeout 1050 /tmp/ipsw-bin/ipsw extract --remote --files --ranged \
+             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
+             > audit/dyld-extract.log 2>&1
+          DSC="$(find extracted -type f -name dyld_shared_cache_arm64_32 | head -1)"
+          test -n "$DSC" || { echo 'MISSING ARM64_32 cache' > audit/BLOCKED.txt; exit 2; }
+          printf '%s\n' "$DSC" > audit/cache-path.txt
+          sha256sum "$DSC" > audit/cache-hash.txt
+      - name: Extract TCC and SoftwareUpdate code and list actual original methods
+        shell: bash
+        run: |
+          set -euo pipefail
+          DSC="$(cat audit/cache-path.txt)"
+          for name in TCC SoftwareUpdateCore MobileSoftwareUpdate; do
+            mkdir -p "libraries/$name"
+            if timeout 185 /tmp/ipsw-bin/ipsw dyld extract "$DSC" "$name" \
+                -o "libraries/$name" > "audit/$name-extract.log" 2>&1; then
+              echo "$name extract returned success" >> audit/image-summary.txt
+            else
+              echo "$name extract not supported/not in cache" >> audit/image-summary.txt
+            fi
+          done
+          python3 - <<'PY'
+          import subprocess,hashlib,json
+          from pathlib import Path
+          out=[]
+          keywords=('path','travers','sanitize','valid','authoriz','entitle','audit',
+                    'ipc','access','file','write','replace','move','rename','url','xpc','sandbox','client')
+          for file in Path('libraries').rglob('*'):
+              if not file.is_file(): continue
+              data=file.read_bytes()
+              info=subprocess.run(['file','-b',str(file)],capture_output=True,text=True).stdout.strip()
+              row={'file':str(file.relative_to('libraries')),'bytes':len(data),
+                   'sha256':hashlib.sha256(data).hexdigest(),'file_kind':info}
+              if 'Mach-O' in info:
+                  n=file.stem
+                  txt=subprocess.run(['strings','-a','-n','8',str(file)],capture_output=True,text=True).stdout
+                  relevant=[line for line in txt.splitlines() if any(k in line.lower() for k in keywords)]
+                  (Path('audit')/(n+'.method-and-message-strings.txt')).write_text('\n'.join(relevant[:1100])+'\n')
+                  row['matching_strings']=len(relevant)
+                  try:
+                      cp=subprocess.run(['/tmp/ipsw-bin/ipsw','class-dump',str(file)],
+                                        capture_output=True,text=True,timeout=125)
+                      (Path('audit')/(n+'.objc-classes.txt')).write_text((cp.stdout or cp.stderr)[:260000])
+                      row['classdump_exit']=cp.returncode
+                  except Exception as e: row['classdump_error']=str(e)
+              out.append(row)
+          Path('audit/original-frameworks.json').write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          if not out: raise SystemExit('No matching framework extracted')
+          PY
+          test -s audit/original-frameworks.json
+          echo 'This is read-only original firmware analysis, not a sandbox escape or protected write.' > audit/limits.txt
+      - name: Publish text-only evidence and original-code hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-23u95-TCC-SoftwareUpdate-framework-auth-audit
+          path: audit/
+          retention-days: 14
+          if-no-files-found: error
