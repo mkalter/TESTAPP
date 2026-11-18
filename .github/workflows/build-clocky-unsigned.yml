@@ -38,12 +38,13 @@ jobs:
         run: |
           sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' clocky-source/Clocky.xcodeproj/project.pbxproj
           sed -i '' 's/preferredProjectObjectVersion = 110;/preferredProjectObjectVersion = 77;/' clocky-source/Clocky.xcodeproj/project.pbxproj
-          # Xcode 26's ld64 does not recognize arm64e.x1, only Xcode 27's
-          # newer linker does. We are building arm64 only: remove just that
-          # unused target from the textual .tbd stubs for CI compatibility.
-          find clocky-source -name '*.tbd' -print0 | while IFS= read -r -d '' stub; do
-            sed -i '' -e 's/arm64e\\.x1-watchos, //g' -e 's/, arm64e\\.x1-watchos//g' "$stub"
+          # Clocky supplies stubs for extra 2026 Watch architectures.
+          # Only arm64 is requested in this CI build. Reduce target lists in
+          # device stubs to arm64; preserve install names and export lists.
+          find clocky-source -path '*watchos-arm64_arm64_32_arm64e_arm64e.x1*' -name '*.tbd' -print0 | while IFS= read -r -d '' stub; do
+            sed -i '' -E 's/^([[:space:]]*targets:[[:space:]]*).*/\\1[ arm64-watchos ]/' "$stub"
           done
+          head -n 5 clocky-source/NanoTimeKit.xcframework/watchos-arm64_arm64_32_arm64e_arm64e.x1/NanoTimeKit.framework/NanoTimeKit.tbd
 
       - name: Compile unsigned Watch app
         shell: bash
