@@ -421,3 +421,62 @@ in Apple's original Watch6,18 23U95 NanoTimeKit shared-cache image and add
 a single bounded read-only positive control chosen from actual
 available native non-bundle styles. Avoid a blind array of unknown
 FaceBundle bundle IDs or any mutating API.
+
+
+## The ACTUAL 23U95 NanoTimeKit authorization path, now independently recovered
+
+[Original Watch6,18 Apple NanoTimeKit dyld disassembly #44277250878](https://github.com/mkalter/TESTAPP/actions/runs/44277250878)
+**SUCCESS**. Original arm64_32 NanoTimeKit SHA256:
+`e77ccd6c26b7413b2fba543207d9c20f5c33e97faaa2e5801050194f25b87d63`.
+The original `LC_SYMTAB` parsed **51,803 symbols** and recovered
+6 targeted implementations with real original code addresses and named calls.
+
+1. `+[NTKGreenfieldUtilities validateFaceType:faceBundleId:]`
+   at **0x543EAD88**:
+   calls `_NTKFaceBundleGetFaceStyleFromString` at `0x543EADB8`;
+   branches on parsed style==44; invokes
+   `initWithBundleIdentifier:` at `0x543EADE4` for style44
+   and `initWithFaceStyle:` at `0x543EAE04` for nonbundled styles;
+   obtains `CLKDevice currentDevice` at `0x543EAE14`;
+   calls `isAvailableForDevice:` at `0x543EAE2C` and,
+   if that returned true, again at `0x543EAE3C`.
+   A false result falls through returning false.
+2. `-[NTKFaceDescriptor isAvailableForDevice:]`
+   at **0x543D998C**:
+   for style44 (branch `cmp w0,#0x2c` at `0x543D99B0`),
+   obtains bundle identifier and `NTKFaceBundleManager sharedManager`,
+   calls `faceBundleForBundleIdentifier:onDevice:` at `0x543D99EC`,
+   then sets boolean from **non-null returned face bundle** at
+   `0x543D9A00`/ `0x543D9A04`.
+   For other face styles calls `_NTKFaceStyleIsAvailable` directly
+   at `0x543D9A18`.
+3. `-[NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:]`
+   at **0x544B0DD4** delegates to its variant with `forMigration:`
+   at **0x544B0DDC**, which loads the original signed bundle,
+   examines the face class, legacy style and device/pairing identity,
+   and invokes **`isRestrictedForDevice:` at 0x544B0F94**.
+4. `_NTKFaceStyleIsAvailable` at **0x544392B0**
+   consults hardware/device-category and collection properties,
+   hardware/internal faces flags, other model capabilities and
+   `isFaceStyleAvailableInternal:forDevice:`.
+
+This code matches the major iOS behavior deduced previously, but now it is
+**proved from the exact original Watch6,18/23U95 executable**, not analogy.
+
+The visible `NTKFaceBundleManager` path asks a face class about
+`isRestrictedForDevice:`. The original Hermès Poodle class previously
+returned restricted for actual Ultra 1 properties. Hence adding or
+copying `NTKZeusFaceBundle.bundle` alone is not sufficient; the
+manager's device gate is involved.
+
+**Practical T8 validation plan**: use a *locally available* non-bundle
+style as positive control, derived from that same original
+`NTKFaceDescriptor isAvailableForDevice:` function and actual
+`CLKDevice currentDevice`. The subsequent XPC validator uses precisely
+the matching Greenfield logic. T8 independently logs Hermès descriptors'
+local availability before comparing their read-only XPC results.
+
+The T8 source was corrected to load NanoTimeKit before resolving
+private Objective-C class names, avoiding false missing-class
+diagnostics. This is not a proof of remote device identity spoofing,
+a path to arbitrary MobileGestalt writes or native Hermès insertion.
