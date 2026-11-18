@@ -166,6 +166,17 @@ NSString *BQRunNativeFaceMachPolicy(void) {
     return NFBFinish(lines, @"native-face-mach-policy.txt");
 }
 
+static NSString *NFBDescribeBootstrapReturn(kern_return_t kr) {
+    switch (kr) {
+        case KERN_SUCCESS: return @"SUCCESS (Mach send right obtained; no service request)";
+        case 1100: return @"BOOTSTRAP_NOT_PRIVILEGED (client is not authorized for name lookup)";
+        case 1101: return @"BOOTSTRAP_NAME_IN_USE";
+        case 1102: return @"BOOTSTRAP_UNKNOWN_SERVICE (name not found in this context)";
+        case 1103: return @"BOOTSTRAP_SERVICE_ACTIVE";
+        default: return [NSString stringWithFormat:@"OTHER (%d)", kr];
+    }
+}
+
 NSString *BQRunNativeFaceBootstrapLookup(void) {
     NSMutableArray<NSString *> *lines = NFBStart(@"T2: bootstrap name lookup only");
     [lines addObject:@"task_get_special_port(self,TASK_BOOTSTRAP_PORT) then bootstrap_look_up"];
@@ -204,8 +215,8 @@ NSString *BQRunNativeFaceBootstrapLookup(void) {
         mach_port_t target = MACH_PORT_NULL;
         kern_return_t kr = lookup(boot, service.UTF8String, &target);
         BOOL received = (kr == KERN_SUCCESS && target != MACH_PORT_NULL);
-        [lines addObject:[NSString stringWithFormat:@"[%@] kr=%d port=%@",
-            service, kr, received ? @"RECEIVED" : @"NONE"]];
+        [lines addObject:[NSString stringWithFormat:@"[%@] kr=%d (%@) port=%@",
+            service, kr, NFBDescribeBootstrapReturn(kr), received ? @"RECEIVED" : @"NONE"]];
         if (target != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), target);
     }
     if (!borrowed) mach_port_deallocate(mach_task_self(), boot);
