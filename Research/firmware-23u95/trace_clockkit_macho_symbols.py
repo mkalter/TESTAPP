@@ -26,6 +26,15 @@ AVAILABILITY_INTEREST=(
     "NTKFaceBundleManager faceBundleForBundleIdentifier:",
     "NTKFaceStyleIsAvailable",
 )
+MIGRATION_INTEREST=(
+    "NTKFace faceWithJSONObjectRepresentation:forDevice:forMigration:",
+    "NTKFace faceWithJSONObjectRepresentation:forDevice:",
+    "NTKFace _applyConfiguration:allowFailure:forMigration:",
+    "NTKFace _initWithFaceStyle:forDevice:",
+    "NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:forMigration:",
+    "NTKFaceBundleManager faceBundleForBundleIdentifier:onDevice:",
+    "NTKMigratableFaceStyles",
+)
 def u32(b,p):return struct.unpack_from("<I",b,p)[0]
 def macho_symbols(b):
     pos=28
@@ -60,14 +69,15 @@ def main():
     p.add_argument("--input",required=True)
     p.add_argument("--sha256",required=True)
     p.add_argument("--out",required=True)
-    p.add_argument("--profile",choices=("clockkit","availability"),default="clockkit")
+    p.add_argument("--profile",choices=("clockkit","availability","migration"),default="clockkit")
     a=p.parse_args()
     b=Path(a.input).read_bytes()
     digest=hashlib.sha256(b).hexdigest()
     if digest!=a.sha256.lower():raise ValueError("Different original Apple framework SHA")
     tab,symbols=macho_symbols(b)
     sect=sections(b)
-    patterns=INTEREST if a.profile=="clockkit" else AVAILABILITY_INTEREST
+    patterns=(INTEREST if a.profile=="clockkit" else
+              AVAILABILITY_INTEREST if a.profile=="availability" else MIGRATION_INTEREST)
     target=[m for m in symbols if any(t in m["name"] for t in patterns)]
     symbol_names_by_vm={}
     for symbol in symbols:
@@ -80,7 +90,10 @@ def main():
         o,part=source_offset(sect,addr,4)
         if o is None or part["name"]!="__text":continue
         nxt=next((x for x in values if x>addr),addr+512)
-        maxbytes=min(512,max(4,nxt-addr),part["size"]-(addr-part["vm"]))
+        # A larger bounded window for the exact JSON migration constructor;
+        # the usual short function scope remains unchanged.
+        limit=2048 if a.profile=="migration" else 512
+        maxbytes=min(limit,max(4,nxt-addr),part["size"]-(addr-part["vm"]))
         if maxbytes<4:continue
         ins=[]
         calls=[]
