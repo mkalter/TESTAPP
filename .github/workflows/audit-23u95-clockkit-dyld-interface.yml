@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/audit-23u95-clockkit-dyld-interface.yml'
       - 'Research/firmware-23u95/trace_clockkit_xpc_transport.py'
+      - 'Research/firmware-23u95/recover_arm64_32_objc_lists.py'
   workflow_dispatch:
 
 permissions:
