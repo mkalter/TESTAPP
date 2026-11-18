@@ -41,3 +41,28 @@ The published Watch kernel read/write example [datalocaltmp/Peepo](https://githu
 **New verified route class:** a kernel exploit with genuine kernel read/write could bypass userland SystemGroup sandbox restrictions. **Tested current result:** the public `AppleAVE2` candidates are not portable because the original Watch6,18 build instead uses `AppleAVEM9`; no working AVEM9-specific exploit or root-equivalent write was found. No arbitrary system-cache write or Hermès unlock has been established. **Do not deploy guessed AVE selectors or crash/race payloads to the user’s physical watch.**
 
 Investigating AVEM9 further would require independently verifying a real flaw in its own code and a safe recovery plan. A kext inventory, a returned kernel pointer, a build or a working file open is not yet the requested persistent MobileGestalt change.
+
+
+
+## Independently cross-checked receiver IOKit policy — exact Watch6,18 23U95
+
+Source: earlier original matching-kernel decompilation [GitHub run #44090713056](https://github.com/mkalter/TESTAPP/actions/runs/44090713056), artifact `14330888839`, under `commands/baseline.sb` and `commands/temporary-sandbox.sb`. This is a **new analysis** of the actual sandbox policy, not an iPhone policy or hypothetical entitlement.
+
+For these exact three IOKit operations, the decompiled profiles contain the following rule counts:
+
+| Operation | `baseline.sb` rules | `temporary-sandbox.sb` rules | AVEM9 / AVE2 class explicitly mentioned? |
+| --- | ---: | ---: | --- |
+| `iokit-open-user-client` | 4 | 10 | **No** |
+| `iokit-open-service` | 4 | 10 | **No** |
+| `iokit-set-properties` | 4 | 12 | **No** |
+
+Relevant actual conditions:
+
+- `baseline.sb:6290–6297`: `iokit-open-user-client` uses `autobox` and `autobox-client` profile flags, then an explicit `deny` fallback.
+- `baseline.sb:6314–6328`: `iokit-set-properties` likewise uses autobox profile flags followed by an explicit `deny` fallback.
+- `temporary-sandbox.sb:12351–12353`: a generic user-client exception is conditioned on the sandbox extension `com.apple.security.exception.iokit-user-client-class`; no visible AVEM9-specific allowance appears in that profile.
+- The original kext contains `AppleAVEUserClient` strings and the kernelcache contains `com.apple.driver.AppleAVEM9`, but **these are not a grant of any IOKit access from a third-party developer-signed watch app**.
+
+**Important limitations:** A complete runtime sandbox evaluation depends on dynamic process flags, entitlements, container profile inheritance and IOKit driver-specific checks. This textual profile audit does **not** prove that `IOServiceOpen` must fail or succeed. In particular, a generic extension class appearing in a rule is not evidence that a normal Watch app can obtain it. No on-device IOKit opens were attempted in this research.
+
+Operational consequence: the claimed iPhone AppleAVE2 race is **not directly portable**, and even a genuine hypothetical `AppleAVEM9` race would require proving that the target Watch app can open the appropriate `AppleAVEUserClient` under its effective sandbox before it could be used. Guessed selectors, reported kbase pointers and a succesful build are not equivalent to that proof.
