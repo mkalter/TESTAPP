@@ -189,3 +189,45 @@ T7 zit bewust NIET in de bestaande knop "Alle 6 lezen en meten". De nieuwe IPA i
 - Original first-party XPC stub target symbol crosscheck [run #44274797889](https://github.com/mkalter/TESTAPP/actions/runs/44274797889) requested.
 
 **Next user action**: sign newest **T7-v3** IPA, run `Native Face Lab → T7 · ClockKit-validatie` once on Watch6,18 and return `clockkit-readonly-face-validation.txt`. Do **not** rerun T1–T6 or obsolete T7-v1/v2. A success is a validation answer, not a native stock Hermès face insertion.
+
+
+## 18 November — real T7-v3 report: ClockKit now responds, both Hermes faces unavailable
+
+Physical Watch6,18/23U95 at **09:27:05 UTC** returned actual
+`validateFaceType:faceBundleId:completionHandler:` XPC completions using
+the original first-party `initWithMachServiceName:options:` with
+`options=0x1000`. No 4099 and no timeout.
+
+| Original submitted test | Genuine XPC reply |
+|---|---|
+| Deliberately nonexistent face type / nonexistent bundle ID | `CLKWatchFaceLibraryErrorDomain code=4` |
+| `type=bundle, bundle=com.apple.NTKZeusFaceBundle` | `CLKWatchFaceLibraryErrorDomain code=4` |
+| `type=bundle, bundle=com.apple.Hermes2025Face` | `CLKWatchFaceLibraryErrorDomain code=4` |
+
+Per [Apple ClockKit SDK enum](https://github.com/xybp888/iOS-SDKs/blob/4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff/iPhoneOS26.4.sdk/System/Library/Frameworks/ClockKit.framework/Headers/CLKWatchFaceLibrary.h),
+**error code 4 = `CLKWatchFaceLibraryErrorCodeFaceNotAvailable`**,
+which differs from permission denied `3` and invalid file `2`.
+Thus the XPC **transport and read-only validator method are verified
+reachable from this normally signed app**. However, because the deliberately
+invalid control receives the *same code 4*, this alone cannot distinguish
+model-specific restrictions from an all-false validator context.
+
+**Next discriminator T8 — locally selected POSITIVE CONTROL**: the new
+`Native Face Lab → T8 · Positieve Apple-controle` derives an actually
+available standard nonbundle style via Apple's local
+`NTKFaceDescriptor initWithFaceStyle:` /
+`isAvailableForDevice:[CLKDevice currentDevice]`. The style string comes
+from the same real `NTKFaceBundleStringFromFaceStyle` runtime. Only then
+does it submit `validateFaceType:faceBundleId:` through the already
+working XPC transport. If the good control succeeds, T8 compares both
+original Hermès IDs. It also logs local Hermès descriptors'
+`initWithBundleIdentifier:` and `isAvailableForDevice:` results;
+absence of the native availability API returns UNKNOWN and skips remote
+tests (no guessed positive control).
+
+**Interpretation of T8**: remote standard success + both Hermès
+`FaceNotAvailable` means the validator's availability distinction is
+specific to those bundles on this Watch. A standard control rejection
+means no safe bundle-specific conclusion from ClockKit alone. Either
+case is STILL NOT an Apple native gallery add or persistent unlock.
+No imports, protected writes, library reset or device spoofing.
