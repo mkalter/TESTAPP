@@ -119,6 +119,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "protected-writer-service-gate.txt",
             "trusted-daemon-policy-differential.txt",
             "clockkit-readonly-face-validation.txt",
+            "clockkit-availability-differential.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -172,6 +173,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "protected-writer-service-gate.txt",
             "trusted-daemon-policy-differential.txt",
             "clockkit-readonly-face-validation.txt",
+            "clockkit-availability-differential.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
