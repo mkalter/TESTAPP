@@ -172,3 +172,20 @@ Nieuwe optionele knop `Native Face Lab → T7 · ClockKit-validatie`:
 5. Retourneer verslag `clockkit-readonly-face-validation.txt` aan iPhone. Een succesvolle validatie bewijst NIET het toevoegen van een originele Hermès-wijzerplaat aan de stock Watch Carousel.
 
 T7 zit bewust NIET in de bestaande knop "Alle 6 lezen en meten". De nieuwe IPA is unsigned en vereist een normale geldige ondertekening/installatie. Nog géén live T7-log, geautoriseerde XPC-bevestiging, systeemface-toevoeging of beschermde MobileGestalt-write bewezen.
+
+
+## 18 November — T7 transport-v3 exact Apple first-party option
+
+**Physical T7-v1 (08:58 UTC):** read-only invalid control and both native face validations returned no XPC reply, with `NSCocoaErrorDomain/4099` (XPC connection invalidated). The first T7 implementation used `initWithServiceName:` and incorrectly waited three separate timeouts after the first 4099; all original Hermès eligibility results remain **UNKNOWN**, not denied.
+
+**Original Watch6,18 / 23U95 first-party source**: [original dyld Mach-O symbol disassembly #44273680584](https://github.com/mkalter/TESTAPP/actions/runs/44273680584) verified ClockKit SHA `225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad` and recovered 8,478 original LC_SYMTAB entries and 26 selected functions. `-[CLKWatchFaceLibraryServer _queue_setupConnectionIfNeeded]` at `0x49c64340` executes `mov w3,#0x1000` at `0x49c64378` and `bl #0x49cccb20` at `0x49c6437c`, consistent with `NSXPCConnectionPrivileged` for a privileged launchd Mach namespace.
+
+**T7-v3 code and build**:
+- Uses dynamically checked watchOS runtime `initWithMachServiceName:options:` with **options=0x1000**, matching observed Apple connection option. This is namespace selection, **not privilege or entitlement escalation**.
+- The only remote method invoked is `validateFaceType:faceBundleId:completionHandler:`; one intentionally invalid control, followed by the two real signed FaceBundle IDs **only if a real reply is received**.
+- Per-request XPC NSError now ends immediately with domain, code and NSDebugDescription; no repeated timeouts upon 4099.
+- [Static safety tests #44274693095](https://github.com/mkalter/TESTAPP/actions/runs/44274693095) **SUCCESS**.
+- [Combined iPhone+Watch IPA #44274658480](https://github.com/mkalter/TESTAPP/actions/runs/44274658480) **SUCCESS**; artifact `unsigned-iphone-watch-ipa` ID `14414356986`.
+- Original first-party XPC stub target symbol crosscheck [run #44274797889](https://github.com/mkalter/TESTAPP/actions/runs/44274797889) requested.
+
+**Next user action**: sign newest **T7-v3** IPA, run `Native Face Lab → T7 · ClockKit-validatie` once on Watch6,18 and return `clockkit-readonly-face-validation.txt`. Do **not** rerun T1–T6 or obsolete T7-v1/v2. A success is a validation answer, not a native stock Hermès face insertion.
