@@ -1,0 +1,96 @@
+name: Build Clocky watchOS (unsigned)
+on:
+  push:
+    branches:
+      - ci/clocky-unsigned-20261118
+    paths:
+      - .github/workflows/build-clocky-unsigned.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Obtain exact upstream Clocky source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/pookjw/Clocky.git clocky-source
+          cd clocky-source
+          git checkout --detach e321aa6b8e951fd287178f42d1c9f71e29dbdd4b
+          git rev-parse HEAD
+
+      - name: Inspect installed Xcode and watchOS SDK
+        shell: bash
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun --sdk watchos --show-sdk-path
+
+      - name: Adapt Xcode project serialization for hosted toolchain
+        shell: bash
+        run: |
+          sed -i '' 's/objectVersion = 110;/objectVersion = 77;/' clocky-source/Clocky.xcodeproj/project.pbxproj
+          sed -i '' 's/preferredProjectObjectVersion = 110;/preferredProjectObjectVersion = 77;/' clocky-source/Clocky.xcodeproj/project.pbxproj
+
+      - name: Compile unsigned Watch app
+        shell: bash
+        run: |
+          set -o pipefail
+          cd clocky-source
+          xcodebuild \
+            -project Clocky.xcodeproj \
+            -scheme Clocky \
+            -configuration Release \
+            -destination 'generic/platform=watchOS' \
+            -derivedDataPath "$PWD/.ci-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SKIP_INSTALL=NO \
+            ARCHS=arm64 \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/clocky-build.log"
+
+      - name: Package genuine compiled watchOS application
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$GITHUB_WORKSPACE/clocky-source/.ci-build/Build/Products/Release-watchos/Clocky.app"
+          test -d "$APP"
+          test -f "$APP/Clocky"
+          mkdir -p "$GITHUB_WORKSPACE/dist/Payload"
+          ditto "$APP" "$GITHUB_WORKSPACE/dist/Payload/Clocky.app"
+          cd "$GITHUB_WORKSPACE/dist"
+          zip -qry Clocky-watchOS-unsigned.ipa Payload
+          ditto -ck --keepParent Payload/Clocky.app Clocky-watchOS-app.zip
+          unzip -l Clocky-watchOS-unsigned.ipa | grep 'Payload/Clocky.app/Clocky'
+          {
+            echo "### Clocky compiled successfully"
+            echo "The IPA is unsigned and contains a watchOS-only app, not an iPhone companion."
+            echo "You must sign it for your Apple Watch before installation."
+            echo "Upstream: pookjw/Clocky @ e321aa6b8e951fd287178f42d1c9f71e29dbdd4b"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload unsigned IPA and Watch app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clocky-watchOS-unsigned
+          path: |
+            dist/Clocky-watchOS-unsigned.ipa
+            dist/Clocky-watchOS-app.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clocky-compiler-log
+          path: clocky-build.log
+          if-no-files-found: ignore
+          retention-days: 14
