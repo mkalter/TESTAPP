@@ -112,3 +112,26 @@ Bron: rechtstreeks door gebruiker gedeelde Native Face Lab rapporten, Watch6,18 
 5. **Volgende offline onderzoek:** valideer in originele exact passende TCC/MobileGestaltHelper code de concrete client-entitlement- en padrestricties en meet veilig eerst documenteerde read-only operaties. Geen beschermd bestand muteren op basis van `bootstrap_look_up=0` alleen.
 
 Nieuwe Watch UI toont nu ook tekst voor elke Mach bootstrap-returncode; deze wijziging beïnvloedt uitsluitend de logweergave.
+
+
+## 18 november 2026 — fysieke T6-uitlezing en originele daemon-sandbox (verifieerbaar)
+
+**Fysieke Watch6,18 build 23U95, 08:18:30 UTC (user-provided log):**
+
+```
+=== Native Face Boundary Lab · T6: effective Apple daemon policy ===
+UNKNOWN: proc_listallpids list failed=1 (Operation not permitted)
+```
+
+**T6 testverdict = UNKNOWN**. Het proces `proc_listallpids` is al geblokkeerd voor deze developer-signed Watch-app; daarom is nooit een PID van `tccd`, `softwareupdated` of `MobileGestaltHelper` geïdentificeerd, en **is `sandbox_check(pid, "file-write-data", MG)` nooit aangeroepen tegen die processen**. Dit bewijst dus noch een remote ALLOW noch een remote DENY. Stop met variaties van deze proceslijsttest zonder een nieuwe gerechtvaardigde autorisatie.
+
+**Daarna origineel exact passend sandboxprofiel offline gecontroleerd**: eerder succesvol geëxtraheerd [Watch6,18/23U95 sandbox-artifact #44175646728](https://github.com/mkalter/TESTAPP/actions/runs/44175646728), `profile-com.apple.tccd.sb` (529 regels) plus `profile-baseline.sb` (8078 regels), afkomstig uit de originele Watch6,18 kernelcache. In het **specifieke** `com.apple.tccd`-profiel:
+- `file-read*` is expliciet algemeen toegestaan, met een specifieke uitsluitlijst.
+- Expliciete `allow file-write*` en `file-write-create` gelden voor `${HOME}/Library/TCC`, CompanionSync-logopslag en `/private/var/mobile/tmp/com.apple.tccd` en `/private/var/tmp/com.apple.tccd`.
+- Er is **geen** `/private/var/containers/Shared/SystemGroup` en geen `mobilegestaltcache` in de directe `com.apple.tccd`-profieltekst.
+- Het overgeërfde `baseline` bevat een speciale `common-mobilegestalt-rules` **read**/metadata-allow voor de exacte cache, maar niet zo'n expliciete ongeclausuleerde cache-write.
+- De `baseline` `file-write-data` SystemGroup-branches bevatten de gebruikelijke `com.apple.sandbox.system-group` en Apple-private `com.apple.security.system-group-containers`/`com.apple.security.system-groups` voorwaarden (naast andere voorwaardelijke opties). Het profielonderzoek is een **statische regelvergelijking**, geen volledige live effectieve sandbox evaluatie met runtime entitlements en eventuele dynamische extensions.
+
+**TCC-route herprioritering**: fysieke `bootstrap_look_up(com.apple.tccd)=0` betekent bereikbaarheid. De in originele TCC disassembly gevonden `registerNewDBAtPath:` leidt naar interne `evalDB:locked:bind:step:` SQL-updates, geen bewezen bestaande-binaire-plist-writer. Noch servicebereikbaarheid, noch een padstring heft de daemon-sandbox op.
+
+**Nieuwe betere kandidaat**: `com.apple.mobilegestalt.xpc` was fysiek op T2 bereikbaar; het originele `MobileGestaltHelper` executable bevat `com.apple.private.security.storage.MobileGestaltCache` en `com.apple.security.system-groups`/doelgroepstrings. Een **werkelijke XML/DER code-signing entitlement decode** is nodig voordat deze strings als cryptografisch gecontroleerde rechten gelden. Zijn bekende XPC-methoden `rebuildCache:` en `setCacheSentinel:` accepteren geen geverifieerde arbitrarily-controlled plist bytes; cache rebuild kan destructief zijn. Geen device-call naar die routes zonder herstelproof.
