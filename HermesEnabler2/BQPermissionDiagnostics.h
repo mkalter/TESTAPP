@@ -34,6 +34,8 @@ FOUNDATION_EXPORT NSString *BQRunNativeFaceMachPolicy(void);
 FOUNDATION_EXPORT NSString *BQRunNativeFaceBootstrapLookup(void);
 /// T3: filesystem existence and read-only access to native store candidates.
 FOUNDATION_EXPORT NSString *BQRunNativeFaceStorePolicy(void);
+/// T6: read-only daemon PID visibility and effective sandbox preflight; may be unavailable.
+FOUNDATION_EXPORT NSString *BQRunTrustedDaemonPolicyDifferential(void);
 /// T5: read-only TCC/Software Update mach policy plus MobileGestalt ownership metadata.
 FOUNDATION_EXPORT NSString *BQRunProtectedWriterServiceGate(void);
 /// T4: on-watch inventory of signed Apple FaceBundle path candidates.
