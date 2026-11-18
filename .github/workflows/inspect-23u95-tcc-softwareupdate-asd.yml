@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PATTERN='^/(System/Library/PrivateFrameworks/(TCC\.framework/Support/tccd|MobileSoftwareUpdate\.framework/Support/softwareupdated)|usr/(libexec|sbin)/asd|System/Library/Launch(Daemons|Agents)/com\.apple\.(tccd|mobile\.softwareupdated|asd)(-Watch)?\.plist)
+          PATTERN='^/(System/Library/PrivateFrameworks/(TCC\.framework/Support/tccd|MobileSoftwareUpdate\.framework/Support/softwareupdated)|usr/(libexec|sbin)/asd|System/Library/Launch(Daemons|Agents)/com\.apple\.(tccd|mobile\.softwareupdated|asd)(-Watch)?\.plist)$'
           echo "$PATTERN" > audit/pattern.txt
           timeout 1200 /tmp/ipswcli/ipsw extract --remote --files --ranged \
              --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
@@ -104,80 +104,14 @@ jobs:
           test -s audit/service-identity.json
           python3 - <<'PY'
           import json
-          a=json.load(open('audit/service-identity.json'))
-          names=[x['source_relative'] for x in a]
-          need=['TCC.framework/Support/tccd','MobileSoftwareUpdate.framework/Support/softwareupdated']
-          missing=[n for n in need if not any(n in s for s in names)]
-          with open('audit/missing-original-executables.txt','w') as f:
-              f.write('Missing sources (absence may reflect extraction layout): '+repr(missing)+'\n')
-          print('original executables not found:',missing)
+          records=json.load(open('audit/service-identity.json'))
+          paths=[r['source_relative'] for r in records]
+          required=['TCC.framework/Support/tccd','MobileSoftwareUpdate.framework/Support/softwareupdated']
+          missing=[needle for needle in required if not any(needle in p for p in paths)]
+          print('Binaries not present in range-extracted source:',missing)
+          with open('audit/missing-original-executables.txt','w') as output:
+              output.write('missing=' + repr(missing) + '\n')
           PY
-      - name: Share evidence reports only; never distribute Apple binaries
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: exact-23u95-tcc-softwareupdate-asd-userland-provenance
-          path: audit/
-          if-no-files-found: error
-          retention-days: 14
-
-          echo "$PATTERN" > audit/pattern.txt
-          timeout 1200 /tmp/ipswcli/ipsw extract --remote --files --ranged \
-             --pattern "$PATTERN" --output "$PWD/extracted" "$IPSW_URL" \
-             > audit/extraction.log 2>&1
-          find extracted -type f -printf '%p %s bytes\n' | sort > audit/extracted-file-list.txt
-          if [ ! -s audit/extracted-file-list.txt ]; then
-            echo "BLOCKED: no matching originals found" > audit/BLOCKED.txt
-            exit 3
-          fi
-      - name: Verify file identity, read selectors, and inspect launchd identity metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib, plistlib, json, subprocess
-          root=Path('extracted')
-          out=Path('audit')
-          summaries=[]
-          for p in root.rglob('*'):
-              if not p.is_file(): continue
-              b=p.read_bytes()
-              desc=subprocess.run(['file','-b',str(p)],capture_output=True,text=True).stdout.strip()
-              item={"source_relative":str(p.relative_to(root)),"sha256":hashlib.sha256(b).hexdigest(),
-                    "bytes":len(b),"kind":desc}
-              if p.suffix=='.plist':
-                  try:
-                      data=plistlib.loads(b)
-                      keys=['Label','Program','ProgramArguments','UserName','GroupName',
-                            'MachServices','POSIXSpawnType','LimitLoadToSessionType','RunAtLoad']
-                      item["launch_settings"]={k:data.get(k) for k in keys if k in data}
-                      (out/'launch'/ (p.name+'.json')).write_text(json.dumps(item,indent=2,default=str))
-                  except Exception as e: item["plist_parse_issue"]=str(e)
-              else:
-                  if b[:4] in (bytes.fromhex('cffaedfe'),bytes.fromhex('cefaedfe')):
-                      label=p.name.replace(' ','_')
-                      strings=subprocess.run(['strings','-a','-n','7',str(p)],capture_output=True,text=True).stdout
-                      keys=('sandbox','entitlement','audit.token','authorization',
-                            'validate','client','container','path','file','write',
-                            'TCC','SoftwareUpdate','cache','access','permission',
-                            'fileURL','urlByStandardizingPath')
-                      matching=[z for z in strings.splitlines() if any(k.lower() in z.lower() for k in keys)]
-                      (out/'binary'/ (label+'.selected-strings.txt')).write_text('\n'.join(matching[:800])+'\n')
-                      result=subprocess.run(['/tmp/ipswcli/ipsw','class-dump',str(p)],
-                          capture_output=True,text=True,timeout=70)
-                      (out/'binary'/ (label+'.objc-classes.txt')).write_text(
-                          (result.stdout or result.stderr)[:180000])
-                      item["class_dump_exit"]=result.returncode
-                      item["selected_strings_count"]=len(matching)
-              summaries.append(item)
-          (out/'service-identity.json').write_text(json.dumps(summaries,indent=2,default=str))
-          print(json.dumps([{k:o.get(k) for k in ('source_relative','bytes','kind','selected_strings_count','class_dump_exit')}
-                for o in summaries],indent=2))
-          assert summaries
-          PY
-          echo 'No third-party Mach/XPC call, device mutation, or sandbox escape performed' > audit/result.txt
-          test -s audit/service-identity.json
       - name: Share evidence reports only; never distribute Apple binaries
         if: always()
         uses: actions/upload-artifact@v4
