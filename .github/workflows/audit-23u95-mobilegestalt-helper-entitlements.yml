@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/audit-23u95-mobilegestalt-helper-entitlements.yml'
       - 'Research/firmware-23u95/audit_mobilegestalt_helper_signed_entitlements.py'
+      - 'Research/firmware-23u95/audit_mobilegestalt_helper_methods.py'
   workflow_dispatch:
 
 permissions:
@@ -77,7 +78,18 @@ jobs:
           if not d["target_group_declared"]:
               print("No embedded SystemGroup authority confirmed; investigate DER entitlements")
           PY
-          echo 'Only signed entitlements inspected. No TCC/MG IPC, no protected write, no reboot.' > audit/safety.txt
+          python3 Research/firmware-23u95/recover_arm64_32_objc_lists.py \
+            --input original-helper --expected-sha256 "$EXPECTED_HELPER_SHA" \
+            --output audit/original-helper-objc-method-lists.json \
+            | tee audit/helper-objc-list-summary.txt
+          python3 -m venv /tmp/mg-python
+          /tmp/mg-python/bin/pip -q install 'capstone>=5,<6'
+          /tmp/mg-python/bin/python Research/firmware-23u95/audit_mobilegestalt_helper_methods.py \
+            --input original-helper --sha256 "$EXPECTED_HELPER_SHA" \
+            --method-map audit/original-helper-objc-method-lists.json \
+            --output audit/original-helper-verified-XPC-methods.json \
+            | tee audit/helper-verified-XPC-summary.txt
+          echo 'Only signed entitlements and existing original helper ObjC implementation were inspected. No TCC/MG IPC, no protected write, no reboot.' > audit/safety.txt
           rm -f original-helper original-service.plist
           rm -rf original
       - name: Publish only signed entitlement metadata
