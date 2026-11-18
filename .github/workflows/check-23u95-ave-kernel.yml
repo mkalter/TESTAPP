@@ -93,6 +93,39 @@ jobs:
           else
             echo 'APPLEAVE2_NOT_LISTED on original Watch6,18 / 23U95 kernel. No AppleAVE2 kernel method on this fileset.' >> output/VERDICT.txt
           fi
+          # This exact Watch6,18 kernel contains AppleAVEM9, not AppleAVE2.
+          # Extract the real installed AVE implementation, inspect its own
+          # userclient/selector names and compare to the iPhone AVE2 claims.
+          if grep -Fq 'com.apple.driver.AppleAVEM9' output/entire-kext-list.txt; then
+            echo 'APPLEAVEM9_PRESENT: this is the actual Watch6,18 AVE codec driver' >> output/VERDICT.txt
+            mkdir -p watch-avem9
+            timeout 210 /tmp/ipsw/ipsw kernel extract "$KC" \
+              com.apple.driver.AppleAVEM9 -o watch-avem9 \
+              > output/avem9-extract.log 2>&1 || true
+            AVEM9="$(find watch-avem9 -type f -iname '*AppleAVEM9*' | head -1)"
+            if [[ -n "$AVEM9" ]]; then
+              sha256sum "$AVEM9" > output/avem9-sha256.txt
+              file "$AVEM9" > output/avem9-filetype.txt
+              strings -a -n 6 "$AVEM9" \
+                | grep -Eai 'eEncType|sEnc|EncType mismatch|AVEM9|Client|UserClient|VideoEncoder|Session|Encode|state|IOService' \
+                | head -n 260 > output/avem9-strings.txt || true
+              python3 - "$AVEM9" output/avem9-property-markers.txt <<'PY'
+          from pathlib import Path
+          import sys
+          data = Path(sys.argv[1]).read_bytes()
+          names = [b'EncType mismatch with session',b'AppleAVEM9',b'AppleAVE2',
+                   b'AppleAVEM9UserClient',b'AppleAVEM9Driver',b'IOUserClient',
+                   b'eEncType',b'sEnc.eType']
+          with open(sys.argv[2],'w') as f:
+              f.write('AVEM9 MachO bytes = '+str(len(data))+'\n')
+              for s in names:
+                  f.write(s.decode()+' = '+str(data.find(s))+'\n')
+          PY
+              echo 'EXTRACTED_ACTUAL_AVEM9: compare structure, do not assume iPhone selector ABI' >> output/VERDICT.txt
+            else
+              echo 'AVEM9_EXTRACT_MISSING: kext listed, extraction not materialized' >> output/VERDICT.txt
+            fi
+          fi
           echo 'No kernel code executed on device, no IOKit method called.' >> output/VERDICT.txt
 
       - name: Export provenance, text and cryptographic evidence
