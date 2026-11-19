@@ -1,0 +1,28 @@
+name: Validate native watch face boundary lab safety contract
+
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - 'Research/test_native_face_lab_contract.py'
+      - 'HermesEnabler2/BQNativeFaceBoundaryLab.m'
+      - 'HermesEnabler2/BQClockKitReadonlyValidation.m'
+      - 'HermesEnabler2/BQPermissionDiagnostics.h'
+      - 'HermesEnabler2/NativeFaceBoundaryLabView.swift'
+      - 'HermesEnabler2/BackupView.swift'
+      - 'HermesEnabler2/ContentView.swift'
+      - 'HermesEnabler2/WatchConnectivity/WatchConnectivityManager.swift'
+      - '.github/workflows/verify-native-face-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-face-boundary-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify API boundaries and transport
+        run: python3 Research/test_native_face_lab_contract.py

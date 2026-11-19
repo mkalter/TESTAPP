@@ -20,6 +20,17 @@ struct BackupView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Native Face Lab · nieuw") {
+                NavigationLink {
+                    NativeFaceBoundaryLabView()
+                } label: {
+                    Label("4 systeemtests · zonder back-up", systemImage: "network")
+                }
+                Text("Metingen van Apple-systeemdiensten en originele FaceBundles; er wordt niets aan het systeem aangepast.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Watch Tests") {
                 NavigationLink {
                     MGPermissionDiagnosticsView()

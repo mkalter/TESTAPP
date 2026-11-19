@@ -1,0 +1,94 @@
+name: Verify original Watch6,18 23U95 IOSurface kernel component (offline)
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - '.github/workflows/audit-23u95-iosurface-kernel-presence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      APPLE_IPSW: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare original Apple kernel verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit original
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > audit/ipsw-extractor-sha.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build original IPSW extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 750 go build -o /tmp/ipsw ./cmd/ipsw)
+          /tmp/ipsw version > audit/extractor-version.txt 2>&1
+      - name: Extract original Watch6,18 23U95 kernelcache only
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 850 /tmp/ipsw extract --kernel --remote --output "$PWD/original" "$APPLE_IPSW" > audit/kernel-extraction-log.txt 2>&1
+          RESULT=$?
+          set -e
+          echo "extract_exit=$RESULT" > audit/kernel-extraction-status.txt
+          find original -type f -printf '%p %s bytes\n' | sort > audit/kernel-file-inventory.txt
+          cat audit/kernel-file-inventory.txt
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path("original")
+          files=sorted(p for p in root.rglob("*") if p.is_file())
+          keys=[
+              b"IOSurfaceRoot",b"IOSurfaceRootUserClient",
+              b"com.apple.iokit.IOSurface",b"IOConnectCallAsyncMethod",
+              b"com.apple.driver.IOSurface",b"IOSurface",
+              b"AppleARMPlatform",
+          ]
+          results=[]
+          for f in files:
+              if f.stat().st_size<100000:continue
+              blob=f.read_bytes()
+              if not (b"IOSurface" in blob or "kernelcache" in f.name.lower()):continue
+              results.append({
+                  "source_original_file":str(f.relative_to(root)),
+                  "size":len(blob),
+                  "sha256":hashlib.sha256(blob).hexdigest(),
+                  "mach_o_or_img4_header_first_8_hex":blob[:8].hex(),
+                  "exact_string_occurrences":{k.decode():blob.count(k) for k in keys},
+                  "remark":"String presence in exact 23U95 kernel only; not reachability, vulnerable selector equivalence, arbitrary write or successful exploit",
+              })
+          report={
+              "device":"Watch6,18","build":"23U95","os":"watchOS 26.6.1",
+              "scanned_original_files":len(files),
+              "reported_original_kernelfiles":results,
+              "notes":[
+                  "No MTE / UAF trigger executed. Kernel files never uploaded.",
+                  "Published iOS 27.0.1 PoCs establish only a reproducible kernel panic; no reliable kernel read/write or MG cache edit.",
+                  "Original watchOS kernel symbol names and reachable user client selector remain unproven without semantic disassembly.",
+              ],
+          }
+          pathlib.Path("audit/original-23u95-iosurface-presence.json").write_text(json.dumps(report,indent=2)+"\n")
+          for x in results:
+              print(x["source_original_file"],x["sha256"],x["exact_string_occurrences"])
+          PY
+          rm -rf original
+      - name: Publish static evidence only; never publish original Apple kernelcache
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch6-18-23u95-original-iosurface-kernel-presence
+          path: audit/
+          retention-days: 14
+          if-no-files-found: error

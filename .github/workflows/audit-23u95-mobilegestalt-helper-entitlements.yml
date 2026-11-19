@@ -1,0 +1,102 @@
+name: Verify exact 23U95 MobileGestaltHelper signed authority
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - '.github/workflows/audit-23u95-mobilegestalt-helper-entitlements.yml'
+      - 'Research/firmware-23u95/audit_mobilegestalt_helper_signed_entitlements.py'
+      - 'Research/firmware-23u95/audit_mobilegestalt_helper_methods.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    env:
+      WATCH_IPSW: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+      EXPECTED_HELPER_SHA: 0e0c05244a3d35753e948783372f18e615ae2032cf7b750dd7a9cc57cfb3626e
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build original Apple firmware ranged extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p original audit
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          (cd /tmp/ipsw-src && git rev-parse HEAD) > audit/ipsw-source-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Compile original extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 720 go build -o /tmp/ipsw ./cmd/ipsw)
+          /tmp/ipsw version > audit/ipsw-version.txt 2>&1
+      - name: Read only original MobileGestaltHelper and launchd manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/(usr/libexec/MobileGestaltHelper|System/Library/LaunchDaemons/com\.apple\.mobilegestalt\.xpc\.plist)$'
+          timeout 900 /tmp/ipsw extract --remote --files --ranged \
+             --pattern "$PATTERN" --output "$PWD/original" "$WATCH_IPSW" \
+             > audit/extraction-log.txt 2>&1
+          HELPER="$(find original -type f -name MobileGestaltHelper | head -1)"
+          MANIFEST="$(find original -type f -name com.apple.mobilegestalt.xpc.plist | head -1)"
+          test -f "$HELPER" && test -f "$MANIFEST"
+          cp "$HELPER" original-helper
+          cp "$MANIFEST" original-service.plist
+          test "$(sha256sum original-helper | cut -d' ' -f1)" = "$EXPECTED_HELPER_SHA"
+          file original-helper > audit/helper-macho-kind.txt
+          python3 - <<'PY'
+          import plistlib, json
+          d=plistlib.load(open("original-service.plist","rb"))
+          out={k:d.get(k) for k in ("Label","Program","MachServices","UserName")}
+          open("audit/original-service-launchd.json","w").write(json.dumps(out,indent=2)+"\n")
+          print(out)
+          assert d.get("Label")=="com.apple.mobilegestalt.xpc"
+          assert d.get("MachServices",{}).get("com.apple.mobilegestalt.xpc") is True
+          PY
+      - name: Verify actual signed entitlements and exact group
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/audit_mobilegestalt_helper_signed_entitlements.py \
+            --input original-helper --sha256 "$EXPECTED_HELPER_SHA" \
+            --report audit/original-helper-signed-entitlements.json \
+            | tee audit/authority-summary.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open("audit/original-helper-signed-entitlements.json"))
+          assert d["xml_entitlement_slot_count"]==1,"No validated XML entitlements"
+          print("target_group_declared=",d["target_group_declared"])
+          if not d["target_group_declared"]:
+              print("No embedded SystemGroup authority confirmed; investigate DER entitlements")
+          PY
+          python3 Research/firmware-23u95/recover_arm64_32_objc_lists.py \
+            --input original-helper --expected-sha256 "$EXPECTED_HELPER_SHA" \
+            --output audit/original-helper-objc-method-lists.json \
+            | tee audit/helper-objc-list-summary.txt
+          python3 -m venv /tmp/mg-python
+          /tmp/mg-python/bin/pip -q install 'capstone>=5,<6'
+          /tmp/mg-python/bin/python Research/firmware-23u95/audit_mobilegestalt_helper_methods.py \
+            --input original-helper --sha256 "$EXPECTED_HELPER_SHA" \
+            --method-map audit/original-helper-objc-method-lists.json \
+            --output audit/original-helper-verified-XPC-methods.json \
+            | tee audit/helper-verified-XPC-summary.txt
+          echo 'Only signed entitlements and existing original helper ObjC implementation were inspected. No TCC/MG IPC, no protected write, no reboot.' > audit/safety.txt
+          rm -f original-helper original-service.plist
+          rm -rf original
+      - name: Publish only signed entitlement metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-watch6-18-23u95-mghelper-signed-authority
+          path: audit/
+          retention-days: 14
+          if-no-files-found: error

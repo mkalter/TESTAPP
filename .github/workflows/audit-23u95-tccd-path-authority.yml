@@ -1,0 +1,111 @@
+name: Audit original 23U95 tccd IPC/path code (SHA guarded)
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - '.github/workflows/audit-23u95-tccd-path-authority.yml'
+      - 'Research/firmware-23u95/audit_tccd_fat_slice.py'
+      - 'Research/firmware-23u95/recover_arm64_32_objc_lists.py'
+      - 'Research/firmware-23u95/disassemble_tccd_method_paths.py'
+      - 'Research/firmware-23u95/resolve_tccd_class_owners.py'
+      - 'Research/firmware-23u95/resolve_tccd_selector_stubs.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-actual-tccd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    env:
+      APPLE_IPSW: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+      EXPECTED_SHA: b885388cef4b25b4988b9b312d3ab6dd2b11d27b9baf0fefc3e18bb29d7dbf9d
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build original Apple firmware extraction tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit originals
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-src
+          git -C /tmp/ipsw-src rev-parse HEAD > audit/parser-commit.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-src/go.mod
+          cache: false
+      - name: Compile ranged-extraction CLI
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-src && timeout 760 go build -o /tmp/ipsw ./cmd/ipsw)
+          /tmp/ipsw version > audit/parser-version.txt 2>&1
+      - name: Fetch exact original Watch6,18 / 23U95 tccd only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/PrivateFrameworks/TCC\.framework/Support/tccd$'
+          timeout 960 /tmp/ipsw extract --remote --files --ranged \
+             --pattern "$PATTERN" --output "$PWD/originals" "$APPLE_IPSW" \
+             > audit/extract-log.txt 2>&1
+          FILE="$(find originals -type f -name tccd | head -1)"
+          test -n "$FILE"
+          cp "$FILE" tccd-original
+          file tccd-original > audit/original-file-kind.txt
+          sha256sum tccd-original > audit/original-sha.txt
+          test "$(sha256sum tccd-original | awk '{print $1}')" = "$EXPECTED_SHA"
+      - name: Verify fat/thin slice and list candidate TCC methods (not callable proof)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Research/firmware-23u95/audit_tccd_fat_slice.py \
+             --input tccd-original --expected-sha256 "$EXPECTED_SHA" \
+             --thin tccd-arm-slice --output audit/tccd-path-selector-candidates.json
+          file tccd-arm-slice > audit/selected-architecture.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('audit/tccd-path-selector-candidates.json'))
+          rows=d.get('matching_strings',[])
+          markers=('validate','path','directory','legacy','sandbox','entitle','container','cleanup','migrat','database')
+          print('SOURCE HASH',d['original_sha256'],'ARCH',d['architecture'])
+          print('SELECTED PATH/AUTH CANDIDATES:')
+          for row in [x for x in rows if any(k in x.lower() for k in markers)][:120]:
+              print(row[:180])
+          PY
+          python3 Research/firmware-23u95/objc_arm64_32_methods.py tccd-arm-slice \
+             > audit/objc-method-candidates.txt 2>&1 || \
+             echo 'Objective-C method walker unsupported for this slice; strings-only candidate report' > audit/objc-method-limitation.txt
+          python3 Research/firmware-23u95/recover_arm64_32_objc_lists.py \
+             --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
+             --output audit/tccd-relative-objc-IMP-map.json \
+             | tee audit/objc-method-validation-summary.txt
+          # Execute only after method names and original IMP offsets have
+          # been independently validated against the source SHA.
+          python3 -m venv /tmp/tccd-python
+          /tmp/tccd-python/bin/pip -q install 'capstone>=5,<6'
+          /tmp/tccd-python/bin/python Research/firmware-23u95/disassemble_tccd_method_paths.py \
+             --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
+             --method-map audit/tccd-relative-objc-IMP-map.json \
+             --output audit/tccd-verified-bounded-method-disassembly.json \
+             | tee audit/tccd-method-summary.txt
+          python3 Research/firmware-23u95/resolve_tccd_class_owners.py \
+             --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
+             --method-map audit/tccd-relative-objc-IMP-map.json \
+             --output audit/tccd-verified-class-owners.json \
+             | tee audit/tccd-class-owners-summary.txt
+          python3 Research/firmware-23u95/resolve_tccd_selector_stubs.py \
+             --input tccd-arm-slice --expected-sha256 "$EXPECTED_SHA" \
+             --disassembly audit/tccd-verified-bounded-method-disassembly.json \
+             --output audit/tccd-resolved-objc-call-sites.json \
+             | tee audit/tccd-stub-call-summary.txt
+          echo 'No XPC call, path operation or Apple system-file mutation on any device.' > audit/limitations.txt
+          rm -f tccd-original tccd-arm-slice
+          rm -rf originals
+      - name: Upload only original-hash metadata and candidate text
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch6-18-23u95-tccd-client-path-authorization-audit
+          path: audit/
+          retention-days: 10
+          if-no-files-found: error

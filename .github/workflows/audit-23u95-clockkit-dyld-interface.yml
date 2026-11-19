@@ -1,0 +1,146 @@
+name: Inspect original 23U95 dyld ClockKit validator protocol and identity
+
+on:
+  push:
+    branches:
+      - experiment/watchos23u95-native-face-boundary-lab-20261117
+    paths:
+      - '.github/workflows/audit-23u95-clockkit-dyld-interface.yml'
+      - 'Research/firmware-23u95/trace_clockkit_xpc_transport.py'
+      - 'Research/firmware-23u95/recover_arm64_32_objc_lists.py'
+      - 'Research/firmware-23u95/trace_clockkit_macho_symbols.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-clockkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 48
+    env:
+      IPSW_URL: https://updates.cdn-apple.com/2026FallFCS/fullrestores/140-55248/8E7A8791-70C2-4E38-A107-EB6665AE3BCA/Watch6%2C18_26.6.1_23U95_Restore.ipsw
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup original Apple 23U95 cache analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit cache extracted /tmp/ipswcli
+          git clone --depth 1 https://github.com/blacktop/ipsw.git /tmp/ipsw-source
+          git -C /tmp/ipsw-source rev-parse HEAD > audit/ipsw-source-version.txt
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: /tmp/ipsw-source/go.mod
+          cache: false
+      - name: Build ranged IPSW cache extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/ipsw-source && timeout 790 go build -o /tmp/ipswcli/ipsw ./cmd/ipsw)
+          /tmp/ipswcli/ipsw version > audit/ipsw-version.txt 2>&1
+      - name: Obtain genuine complete ARM64_32 dyld cache segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='^/System/Library/Caches/com\.apple\.dyld/dyld_shared_cache_arm64_32.*$'
+          timeout 1420 /tmp/ipswcli/ipsw extract --remote --files --ranged \
+             --pattern "$PATTERN" --output "$PWD/cache" "$IPSW_URL" \
+             > audit/cache-extraction.log 2>&1
+          find cache -type f -name 'dyld_shared_cache_arm64_32*' -printf '%f %s bytes\n' | sort > audit/cache-segments.txt
+          CACHE="$(find cache -type f -name dyld_shared_cache_arm64_32 | head -1)"
+          test -n "$CACHE"
+          sha256sum "$CACHE" > audit/main-cache-sha256.txt
+          /tmp/ipswcli/ipsw dyld image "$CACHE" > audit/cache-image-names.txt 2>&1
+          grep -F 'ClockKit' audit/cache-image-names.txt > audit/clockkit-image-names.txt || true
+          cat audit/clockkit-image-names.txt
+      - name: Export original ClockKit ONLY and inspect real selector names
+        shell: bash
+        run: |
+          set -euo pipefail
+          CACHE="$(find cache -type f -name dyld_shared_cache_arm64_32 | head -1)"
+          set +e
+          timeout 300 /tmp/ipswcli/ipsw dyld extract "$CACHE" \
+             '/System/Library/Frameworks/ClockKit.framework/ClockKit' \
+             -o "$PWD/extracted" > audit/clockkit-export-log.txt 2>&1
+          RESULT=$?
+          set -e
+          echo "clockkit-export-exit=$RESULT" > audit/status.txt
+          find extracted -type f -printf '%p %s bytes\n' > audit/exported-binaries.txt
+          # Inspects only actual exported files; binary stays local to the
+          # runner and is never uploaded as an artifact.
+          python3 Research/firmware-23u95/audit_clockkit_facelib_files.py \
+             --root extracted --output audit/clockkit-original-dyld-selectors.json \
+             | tee audit/clockkit-dyld-summary.txt
+          # The standalone ClockKit client may be a dyld-exported binary.
+          # Only original SHA-checked metadata and bounded method callsites
+          # are saved; full Apple binary is deleted before artifact upload.
+          TARGET="$(find extracted -type f -name ClockKit | head -1)"
+          if [[ -n "$TARGET" ]]; then
+            EXPECTED="$(sha256sum "$TARGET" | awk '{print $1}')"
+            if [[ "$EXPECTED" != '225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad' ]]; then
+              echo "Original watchOS ClockKit SHA unexpectedly changed — refuse callsite claims" > audit/sha-mismatch.txt
+            else
+              python3 Research/firmware-23u95/recover_arm64_32_objc_lists.py \
+                --input "$TARGET" --expected-sha256 "$EXPECTED" \
+                --output audit/original-clockkit-objc-IMP-map.json \
+                | tee audit/clockkit-objc-summary.txt || echo "ObjC metadata parser unsupported for dyld extraction" > audit/objc-limitation.txt
+              if [[ -s audit/original-clockkit-objc-IMP-map.json ]]; then
+                python3 -m venv /tmp/clockkit-python
+                /tmp/clockkit-python/bin/pip -q install 'capstone>=5,<6'
+                /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_xpc_transport.py \
+                  --input "$TARGET" --sha256 "$EXPECTED" \
+                  --method-map audit/original-clockkit-objc-IMP-map.json \
+                  --out audit/original-clockkit-XPC-client-IMP-trace.json \
+                  | tee audit/clockkit-IMP-trace-summary.txt || echo "No validated ClockKit client callsites" > audit/callsite-limitation.txt
+              fi
+            fi
+          fi
+          # Independent source-symbol route avoids dyld shared-cache
+          # optimized direct selector method-list pointers.
+          if [[ -n "$TARGET" ]] && [[ "$EXPECTED" == '225c004e9a2288799cdad99228076a7b7761befb8686c48407f3f8d0dec59dad' ]]; then
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$TARGET" --sha256 "$EXPECTED" \
+              --out audit/original-clockkit-symbol-call-trace.json \
+              | tee audit/clockkit-symbol-call-summary.txt || echo 'LC_SYMTAB symbol route unavailable: record the actual error' > audit/symbol-limitation.txt
+            # Independent first-party device identity source and category
+            # mapping from the identical original ClockKit binary.
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$TARGET" --sha256 "$EXPECTED" --profile identity \
+              --out audit/original-clockkit-device-identity-call-trace.json \
+              | tee audit/clockkit-device-identity-summary.txt || \
+              echo 'Identity method mapping unavailable; cannot infer source of sizeClass' > audit/identity-limitation.txt
+          fi
+          # Independently inspect exact original NanoTimeKit face availability
+          # from the SAME Watch6,18 dyld cache. No device interaction.
+          timeout 300 /tmp/ipswcli/ipsw dyld extract "$CACHE" \
+             '/System/Library/PrivateFrameworks/NanoTimeKit.framework/NanoTimeKit' \
+             -o "$PWD/extracted" > audit/nanotimekit-export-log.txt 2>&1 || \
+             echo "NanoTimeKit export unavailable; no codeflow claims" > audit/nanotimekit-limitation.txt
+          NTK="$(find extracted -type f -name NanoTimeKit | head -1)"
+          if [[ -n "$NTK" ]]; then
+            NTK_SHA="$(sha256sum "$NTK" | cut -d' ' -f1)"
+            echo "$NTK_SHA" > audit/original-nanotimekit-sha256.txt
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$NTK" --sha256 "$NTK_SHA" --profile availability \
+              --out audit/original-nanotimekit-face-availability-IMP-trace.json \
+              | tee audit/nanotimekit-availability-summary.txt || \
+              echo "No original NTK availability methods verified; don't infer missing" > audit/nanotimekit-limitation.txt
+            /tmp/clockkit-python/bin/python Research/firmware-23u95/trace_clockkit_macho_symbols.py \
+              --input "$NTK" --sha256 "$NTK_SHA" --profile migration \
+              --out audit/original-nanotimekit-json-migration-IMP-trace.json \
+              | tee audit/nanotimekit-migration-summary.txt || \
+              echo "No original JSON migration callchain proven; no speculative on-device action" > audit/nanotimekit-migration-limitation.txt
+          else
+            echo "NanoTimeKit not extracted from original 23U95 dyld; unavailable" > audit/nanotimekit-limitation.txt
+          fi
+          echo 'Mach service and selector existence are not proof of client RPC acceptance or native Hermès install.' > audit/limitations.txt
+          rm -rf extracted cache
+      - name: Publish only validated original watchOS selector and provenance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-watch6-18-23u95-dyld-clockkit-interface
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14

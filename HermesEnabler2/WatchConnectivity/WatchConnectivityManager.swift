@@ -112,6 +112,19 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
             "iodevicetree-write-probe.txt",
+            "native-face-mach-policy.txt",
+            "native-face-bootstrap-lookup.txt",
+            "native-face-store-policy.txt",
+            "native-face-bundle-inventory.txt",
+            "protected-writer-service-gate.txt",
+            "trusted-daemon-policy-differential.txt",
+            "clockkit-readonly-face-validation.txt",
+            "clockkit-availability-differential.txt",
+            "clockkit-migration-local-differential.txt",
+            "hermes2025-live-identity-gates.txt",
+            "cve-2026-86886-tcc-reachability.txt",
+            "cve-2026-86876-coremedia-reachability.txt",
+            "cve-2026-112477-iosurface-service-preconditions.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -158,6 +171,19 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "mgsetanswer-experiment.txt",
             "mgsetanswer-persistence.txt",
             "iodevicetree-write-probe.txt",
+            "native-face-mach-policy.txt",
+            "native-face-bootstrap-lookup.txt",
+            "native-face-store-policy.txt",
+            "native-face-bundle-inventory.txt",
+            "protected-writer-service-gate.txt",
+            "trusted-daemon-policy-differential.txt",
+            "clockkit-readonly-face-validation.txt",
+            "clockkit-availability-differential.txt",
+            "clockkit-migration-local-differential.txt",
+            "hermes2025-live-identity-gates.txt",
+            "cve-2026-86886-tcc-reachability.txt",
+            "cve-2026-86876-coremedia-reachability.txt",
+            "cve-2026-112477-iosurface-service-preconditions.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

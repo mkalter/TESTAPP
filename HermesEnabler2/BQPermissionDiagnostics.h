@@ -26,4 +26,32 @@ FOUNDATION_EXPORT NSString *BQRunMGSetAnswerWriteExperiment(void);
 FOUNDATION_EXPORT NSString *BQCheckMGSetAnswerCanary(void);
 /// Real IOKit property set calls, using only the exact existing property bytes.
 FOUNDATION_EXPORT NSString *BQRunIODeviceTreeWriteProbe(void);
+
+//// Watch6,18 native FaceBundle / Carousel authorization lab (READ ONLY).
+/// T1: effective sandbox mach-lookup preflight for known Apple face services.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceMachPolicy(void);
+/// T2: bootstrap_look_up name resolution only; no XPC messages or method calls.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceBootstrapLookup(void);
+/// T3: filesystem existence and read-only access to native store candidates.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceStorePolicy(void);
+/// T6: read-only daemon PID visibility and effective sandbox preflight; may be unavailable.
+FOUNDATION_EXPORT NSString *BQRunTrustedDaemonPolicyDifferential(void);
+/// T5: read-only TCC/Software Update mach policy plus MobileGestalt ownership metadata.
+FOUNDATION_EXPORT NSString *BQRunProtectedWriterServiceGate(void);
+/// T11: original watchOS TCC CVE-2026-86886 service reachability, no exploit request.
+FOUNDATION_EXPORT NSString *BQRunTCC86886Reachability(void);
+/// T13: original watchOS IOSurfaceRoot benign service visibility, no race or kernel crash.
+FOUNDATION_EXPORT NSString *BQRunIOSurface112477Reachability(void);
+/// T12: original watchOS CoreMedia CVE-2026-86876 harmless public API check.
+FOUNDATION_EXPORT NSString *BQRunCoreMedia86876Reachability(void);
+/// T10: read-only CLKDevice hardware category/collection and Hermes2025 eligibility gates.
+FOUNDATION_EXPORT NSString *BQRunOriginalHermes2025IdentityGates(void);
+/// T9: local original NanoTimeKit forMigration YES/NO FaceBundle lookup, no FaceStore write.
+FOUNDATION_EXPORT NSString *BQRunClockKitMigrationLookupDifferential(void);
+/// T8: opt-in positive-control comparison using local supported NTK style, then original Hermès.
+FOUNDATION_EXPORT NSString *BQRunClockKitAvailabilityDifferential(void);
+/// T7: explicit opt-in read-only ClockKit face validation XPC (no import, no face addition).
+FOUNDATION_EXPORT NSString *BQRunClockKitReadOnlyFaceValidation(void);
+/// T4: on-watch inventory of signed Apple FaceBundle path candidates.
+FOUNDATION_EXPORT NSString *BQRunNativeFaceBundleInventory(void);
 NS_ASSUME_NONNULL_END
