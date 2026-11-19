@@ -396,3 +396,113 @@ NSString *BQRunNativeFaceBundleInventory(void) {
     [lines addObject:@"No private library loaded; no face preview created."];
     return NFBFinish(lines, @"native-face-bundle-inventory.txt");
 }
+
+
+/**
+ * T11: exact watchOS 23U95 TCC (CVE-2026-86886) reachability only.
+ *
+ * A path traversal advisory is NOT evidence of a caller-controllable path
+ * in a trusted tccd RPC. We ask launchd only for the existing Mach service
+ * name and release any port. No XPC request, path payload, vulnerable method,
+ * sandbox extension, or Apple protected-file mutation.
+ */
+NSString *BQRunTCC86886Reachability(void) {
+    NSMutableArray<NSString *> *lines=NFBStart(@"T11: CVE-2026-86886 TCC reachability");
+    [lines addObject:@"CVE=2026-86886 component=TCC impact=protected-system-file modification (Apple advisory, not a confirmed local exploit)."];
+    [lines addObject:@"Test measures real current-app service reachability only; DOES NOT trigger CVE or write MobileGestalt."];
+    NFBSandboxCheck check=NFBCheckFunction();
+    NSString *name=@"com.apple.tccd";
+    [lines addObject:[NSString stringWithFormat:
+        @"TCC mach-lookup sandbox=%@",NFBCheck(check,@"mach-lookup",NFBFilterGlobalName,name)]];
+    NFBLaunchdLookup lookup=(NFBLaunchdLookup)dlsym(RTLD_DEFAULT,"bootstrap_look_up");
+    NFBSpecialPort special=(NFBSpecialPort)dlsym(RTLD_DEFAULT,"task_get_special_port");
+    mach_port_t boot=MACH_PORT_NULL;
+    BOOL borrowed=NO;
+    kern_return_t result=KERN_FAILURE;
+    if (!lookup) {
+        [lines addObject:@"UNKNOWN: bootstrap_look_up export missing; no service requested."];
+    } else {
+        if (special) result=special(mach_task_self(),TASK_BOOTSTRAP_PORT,&boot);
+        else {
+            mach_port_t *ptr=(mach_port_t *)dlsym(RTLD_DEFAULT,"bootstrap_port");
+            if (ptr && *ptr!=MACH_PORT_NULL) {
+                boot=*ptr;
+                borrowed=YES;
+                result=KERN_SUCCESS;
+            }
+        }
+        [lines addObject:[NSString stringWithFormat:@"Own bootstrap port acquisition=%d",result]];
+        if (result==KERN_SUCCESS && boot!=MACH_PORT_NULL) {
+            mach_port_t service=MACH_PORT_NULL;
+            kern_return_t kr=lookup(boot,name.UTF8String,&service);
+            [lines addObject:[NSString stringWithFormat:
+                @"TCC original Mach service kr=%d (%@) port=%@",
+                kr,NFBDescribeBootstrapReturn(kr),
+                (kr==KERN_SUCCESS && service!=MACH_PORT_NULL)?@"RECEIVED":@"NONE"]];
+            if (service!=MACH_PORT_NULL) mach_port_deallocate(mach_task_self(),service);
+            if (!borrowed) mach_port_deallocate(mach_task_self(),boot);
+        }
+    }
+    NSString *mg=BQMobileGestaltPath();
+    [lines addObject:[NSString stringWithFormat:
+       @"Original MG cache file-write-data policy=%@",
+       NFBCheck(check,@"file-write-data",NFBFilterPath,mg)]];
+    [lines addObject:@"RESULT: TCC service availability is NOT TCC path traversal, privileged arbitrary-file write, or a successful MobileGestalt edit."];
+    [lines addObject:@"No XPC method invoked; no payload, path traversal, protected open/write, or cache rebuild."];
+    return NFBFinish(lines,@"cve-2026-86886-tcc-reachability.txt");
+}
+
+/**
+ * T12: exact watchOS 23U95 CoreMedia (CVE-2026-86876) benign API check.
+ *
+ * Apple calls this an out-of-bounds write and a possible sandbox escape.
+ * Neither vulnerable function nor input layout has been verified on this
+ * hardware. Only the standard public empty CMBlockBuffer allocation API
+ * is exercised, with no bytes, codecs, malformed descriptors or IPC.
+ */
+NSString *BQRunCoreMedia86876Reachability(void) {
+    NSMutableArray<NSString *> *lines=NFBStart(@"T12: CVE-2026-86876 CoreMedia reachability");
+    [lines addObject:@"CVE=2026-86876 component=CoreMedia impact=possible sandbox restrictions bypass (Apple advisory, not local proof)."];
+    [lines addObject:@"Public, benign API control; no out-of-bounds input or kernel operation is requested."];
+    NSString *path=@"/System/Library/Frameworks/CoreMedia.framework/CoreMedia";
+    NFBSandboxCheck check=NFBCheckFunction();
+    [lines addObject:[NSString stringWithFormat:
+        @"CoreMedia framework file-read-data sandbox=%@",
+        NFBCheck(check,@"file-read-data",NFBFilterPath,path)]];
+    void *handle=dlopen(path,RTLD_LAZY|RTLD_LOCAL);
+    if (!handle) {
+        const char *err=dlerror();
+        [lines addObject:[NSString stringWithFormat:
+            @"CoreMedia dlopen=FAILED %s",err?: "unknown"]];
+        [lines addObject:@"UNKNOWN: framework not loaded; cannot evaluate this CVE's watchOS attack surface."];
+        return NFBFinish(lines,@"cve-2026-86876-coremedia-reachability.txt");
+    }
+    [lines addObject:@"CoreMedia framework dlopen=SUCCESS (original signed Apple framework)."];
+    typedef int32_t (*CMEmpty)(CFAllocatorRef,uint32_t,uint32_t,CFTypeRef *);
+    CMEmpty empty=(CMEmpty)dlsym(handle,"CMBlockBufferCreateEmpty");
+    void *createMemoryBlock=(void *)dlsym(handle,"CMBlockBufferCreateWithMemoryBlock");
+    void *createSampleBuffer=(void *)dlsym(handle,"CMSampleBufferCreate");
+    [lines addObject:[NSString stringWithFormat:
+        @"Public symbols CMBlockBufferCreateEmpty=%@ CMBlockBufferCreateWithMemoryBlock=%@ CMSampleBufferCreate=%@",
+        empty?@"PRESENT":@"ABSENT",
+        createMemoryBlock?@"PRESENT":@"ABSENT",
+        createSampleBuffer?@"PRESENT":@"ABSENT"]];
+    if (empty) {
+        CFTypeRef block=NULL;
+        int32_t status=empty(kCFAllocatorDefault,0,0,&block);
+        [lines addObject:[NSString stringWithFormat:
+            @"Benign empty block creation returned OSStatus=%d block=%@",
+            (int)status,block?@"PRESENT":@"NIL"]];
+        if (block) CFRelease(block);
+    } else {
+        [lines addObject:@"SKIPPED: harmless empty CMBlockBuffer API unavailable."];
+    }
+    dlclose(handle);
+    NSString *mg=BQMobileGestaltPath();
+    [lines addObject:[NSString stringWithFormat:
+       @"Original MG cache file-write-data sandbox=%@",
+       NFBCheck(check,@"file-write-data",NFBFilterPath,mg)]];
+    [lines addObject:@"RESULT: a functional CoreMedia API is NOT evidence of the CVE's OOB condition, escape, kernel rights or MG editing."];
+    [lines addObject:@"No malformed buffer, codec parsing, race, exploit payload, protected file write or native gallery insertion."];
+    return NFBFinish(lines,@"cve-2026-86876-coremedia-reachability.txt");
+}
