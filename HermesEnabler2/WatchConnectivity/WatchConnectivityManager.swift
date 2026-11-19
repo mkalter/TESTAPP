@@ -124,6 +124,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "hermes2025-live-identity-gates.txt",
             "cve-2026-86886-tcc-reachability.txt",
             "cve-2026-86876-coremedia-reachability.txt",
+            "cve-2026-112477-iosurface-service-preconditions.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
