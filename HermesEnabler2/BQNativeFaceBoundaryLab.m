@@ -469,7 +469,7 @@ NSString *BQRunCoreMedia86876Reachability(void) {
     [lines addObject:[NSString stringWithFormat:
         @"CoreMedia framework file-read-data sandbox=%@",
         NFBCheck(check,@"file-read-data",NFBFilterPath,path)]];
-    void *handle=dlopen(path,RTLD_LAZY|RTLD_LOCAL);
+    void *handle=dlopen(path.fileSystemRepresentation,RTLD_LAZY|RTLD_LOCAL);
     if (!handle) {
         const char *err=dlerror();
         [lines addObject:[NSString stringWithFormat:
