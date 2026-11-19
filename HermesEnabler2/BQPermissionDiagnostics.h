@@ -40,6 +40,8 @@ FOUNDATION_EXPORT NSString *BQRunTrustedDaemonPolicyDifferential(void);
 FOUNDATION_EXPORT NSString *BQRunProtectedWriterServiceGate(void);
 /// T11: original watchOS TCC CVE-2026-86886 service reachability, no exploit request.
 FOUNDATION_EXPORT NSString *BQRunTCC86886Reachability(void);
+/// T13: original watchOS IOSurfaceRoot benign service visibility, no race or kernel crash.
+FOUNDATION_EXPORT NSString *BQRunIOSurface112477Reachability(void);
 /// T12: original watchOS CoreMedia CVE-2026-86876 harmless public API check.
 FOUNDATION_EXPORT NSString *BQRunCoreMedia86876Reachability(void);
 /// T10: read-only CLKDevice hardware category/collection and Hermes2025 eligibility gates.
