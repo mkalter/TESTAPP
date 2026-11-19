@@ -38,6 +38,10 @@ FOUNDATION_EXPORT NSString *BQRunNativeFaceStorePolicy(void);
 FOUNDATION_EXPORT NSString *BQRunTrustedDaemonPolicyDifferential(void);
 /// T5: read-only TCC/Software Update mach policy plus MobileGestalt ownership metadata.
 FOUNDATION_EXPORT NSString *BQRunProtectedWriterServiceGate(void);
+/// T11: original watchOS TCC CVE-2026-86886 service reachability, no exploit request.
+FOUNDATION_EXPORT NSString *BQRunTCC86886Reachability(void);
+/// T12: original watchOS CoreMedia CVE-2026-86876 harmless public API check.
+FOUNDATION_EXPORT NSString *BQRunCoreMedia86876Reachability(void);
 /// T10: read-only CLKDevice hardware category/collection and Hermes2025 eligibility gates.
 FOUNDATION_EXPORT NSString *BQRunOriginalHermes2025IdentityGates(void);
 /// T9: local original NanoTimeKit forMigration YES/NO FaceBundle lookup, no FaceStore write.
