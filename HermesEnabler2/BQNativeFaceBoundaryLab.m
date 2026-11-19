@@ -506,3 +506,97 @@ NSString *BQRunCoreMedia86876Reachability(void) {
     [lines addObject:@"No malformed buffer, codec parsing, race, exploit payload, protected file write or native gallery insertion."];
     return NFBFinish(lines,@"cve-2026-86876-coremedia-reachability.txt");
 }
+
+
+/**
+ * T13 — Rust505/CVE-2026-112477 entry-surface precondition only.
+ *
+ * The external repository uses a destructive IOSurfaceRoot registry race to
+ * provoke UAF/panic on iOS 26.4 arm64e; do NOT copy that harness to this
+ * daily-use watchOS 26.6.1 arm64_32 app.
+ *
+ * Identify real IOSurfaceRoot service on 23U95 and optionally perform a
+ * single ordinary type-0 user-client open + immediate close (no external
+ * selector, surface registration, unregister, concurrency, or allocations).
+ * No protected file mutation or privilege request.
+ */
+NSString *BQRunIOSurface112477Reachability(void) {
+    NSMutableArray<NSString *> *lines=NFBStart(@"T13: CVE-2026-112477 IOSurface service preconditions");
+    [lines addObject:@"Original Watch6,18 23U95 kernel SHA=ced56594d646bc39261c7f6d4cce8554accc9fd16cce6ec4aa70ad3d98f56261"];
+    [lines addObject:@"Same-build kernel scan confirmed IOSurfaceRoot and IOSurfaceRootUserClient string presence; not affected-selector proof."];
+    [lines addObject:@"Reference Rust505 source: iPhone iOS 26.4 arm64e only; no kernel read/write primitive or root privilege demonstrated."];
+    [lines addObject:@"This is a benign visibility/open-close probe, NOT the UAF trigger or a MobileGestalt editor."];
+
+    const char *ioPaths[]={
+        "/System/Library/Frameworks/IOKit.framework/IOKit",
+        "/System/Library/PrivateFrameworks/IOKit.framework/IOKit"
+    };
+    void *lib=NULL;
+    for (size_t i=0;i<sizeof(ioPaths)/sizeof(ioPaths[0]) && !lib;i++)
+        lib=dlopen(ioPaths[i],RTLD_LAZY|RTLD_LOCAL);
+    typedef CFMutableDictionaryRef (*MatchingFn)(const char *);
+    typedef mach_port_t (*GetServiceFn)(mach_port_t,CFDictionaryRef);
+    typedef kern_return_t (*ReleaseFn)(mach_port_t);
+    typedef kern_return_t (*OpenFn)(mach_port_t,mach_port_t,uint32_t,mach_port_t *);
+    typedef kern_return_t (*CloseFn)(mach_port_t);
+    void *symbols=lib?lib:RTLD_DEFAULT;
+    MatchingFn matching=(MatchingFn)dlsym(symbols,"IOServiceMatching");
+    GetServiceFn getService=(GetServiceFn)dlsym(symbols,"IOServiceGetMatchingService");
+    ReleaseFn release=(ReleaseFn)dlsym(symbols,"IOObjectRelease");
+    OpenFn openFn=(OpenFn)dlsym(symbols,"IOServiceOpen");
+    CloseFn closeFn=(CloseFn)dlsym(symbols,"IOServiceClose");
+    [lines addObject:[NSString stringWithFormat:
+       @"IOKit framework=%@ matching=%@ getMatchingService=%@ open=%@ close=%@ release=%@",
+       lib?@"LOADED":@"NOT LOADED (global symbol fallback)",
+       matching?@"YES":@"NO",getService?@"YES":@"NO",
+       openFn?@"YES":@"NO",closeFn?@"YES":@"NO",release?@"YES":@"NO"]];
+    if (matching && getService && release) {
+        CFMutableDictionaryRef dict=matching("IOSurfaceRoot");
+        if (!dict) {
+            [lines addObject:@"IOSurfaceRoot class matching dictionary unavailable"];
+        } else {
+            mach_port_t service=getService(MACH_PORT_NULL,dict);
+            // IOServiceGetMatchingService owns/consumes its matching dictionary.
+            [lines addObject:[NSString stringWithFormat:
+                @"IOSurfaceRoot matching service=%@ (service port %u)",
+                service!=MACH_PORT_NULL?@"FOUND":@"NOT FOUND",service]];
+            if (service!=MACH_PORT_NULL) {
+                if (openFn && closeFn) {
+                    mach_port_t connection=MACH_PORT_NULL;
+                    kern_return_t kr=openFn(service,mach_task_self(),0,&connection);
+                    [lines addObject:[NSString stringWithFormat:
+                       @"Ordinary IOServiceOpen(type=0) return=%d (0x%x) connection=%@",
+                       kr,(unsigned)kr,connection!=MACH_PORT_NULL?@"YES":@"NO"]];
+                    if (connection!=MACH_PORT_NULL) {
+                        kern_return_t closeStatus=closeFn(connection);
+                        [lines addObject:[NSString stringWithFormat:
+                           @"Immediate ordinary IOServiceClose return=%d",closeStatus]];
+                    }
+                } else {
+                    [lines addObject:@"SKIPPED: user client open/close symbols unavailable."];
+                }
+                (void)release(service);
+            }
+        }
+    } else {
+        [lines addObject:@"UNKNOWN: IOKit matching exports unavailable; cannot infer service absence."];
+    }
+    if (lib) dlclose(lib);
+
+    void *surf=dlopen("/System/Library/Frameworks/IOSurface.framework/IOSurface",
+                      RTLD_LAZY|RTLD_LOCAL);
+    if (!surf) surf=dlopen("/System/Library/PrivateFrameworks/IOSurface.framework/IOSurface",
+                           RTLD_LAZY|RTLD_LOCAL);
+    [lines addObject:[NSString stringWithFormat:
+        @"IOSurface framework=%@ createSymbol=%@ getIDSymbol=%@",
+        surf?@"LOADED":@"NOT LOADABLE",
+        surf&&dlsym(surf,"IOSurfaceCreate")?@"YES":@"NO",
+        surf&&dlsym(surf,"IOSurfaceGetID")?@"YES":@"NO"]];
+    if (surf) dlclose(surf);
+    [lines addObject:[NSString stringWithFormat:
+       @"Original MG cache file-write-data remains=%@",
+       NFBCheck(NFBCheckFunction(),@"file-write-data",NFBFilterPath,BQMobileGestaltPath())]];
+    [lines addObject:@"No selector 17/18, no surface lifecycle race, no heap groom, no kernel panic, no protected cache write."];
+    [lines addObject:@"Successful open proves ordinary IOKit user-client access ONLY; NOT the CVE or privilege escalation."];
+    return NFBFinish(lines,@"cve-2026-112477-iosurface-service-preconditions.txt");
+}
