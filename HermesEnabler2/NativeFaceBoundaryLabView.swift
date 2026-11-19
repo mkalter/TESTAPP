@@ -18,7 +18,8 @@ struct NativeFaceBoundaryLabView: View {
         ("T9 · Migratie-lookup", "Vergelijk lokaal de gewone en Apple's migratiegerichte Hermès-FaceBundle-lookup."),
         ("T10 · Hermès 2025-apparaatcontrole", "Meet echte categorie, merk en collectie van de Watch zonder MobileGestalt te veranderen."),
         ("T11 · TCC CVE-2026-86886", "Controleer Apple's TCC-dienst en rechten, zonder pad-traversal of schrijven."),
-        ("T12 · CoreMedia CVE-2026-86876", "Controleer CoreMedia-beschikbaarheid en een veilige lege buffer.")
+        ("T12 · CoreMedia CVE-2026-86876", "Controleer CoreMedia-beschikbaarheid en een veilige lege buffer."),
+        ("T13 · IOSurface CVE-2026-112477", "Controleer de echte IOSurfaceRoot-dienst zonder de kernelcrash te triggeren.")
     ]
 
     var body: some View {
@@ -26,7 +27,7 @@ struct NativeFaceBoundaryLabView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Native Hermès · systeemonderzoek")
                     .font(.headline)
-                Text("T1–T6 meten rechten. T7–T10 onderzoeken native gezichten; T11/T12 controleren CVE-voorwaarden zonder exploits of systeemwijzigingen.")
+                Text("T1–T6 meten rechten. T7–T10 onderzoeken native gezichten; T11–T13 controleren CVE-voorwaarden zonder race-exploits of systeemwijzigingen.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -94,6 +95,9 @@ struct NativeFaceBoundaryLabView: View {
             case 11:
                 name = "cve-2026-86876-coremedia-reachability.txt"
                 output = BQRunCoreMedia86876Reachability() as String
+            case 12:
+                name = "cve-2026-112477-iosurface-service-preconditions.txt"
+                output = BQRunIOSurface112477Reachability() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
