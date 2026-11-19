@@ -183,6 +183,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "hermes2025-live-identity-gates.txt",
             "cve-2026-86886-tcc-reachability.txt",
             "cve-2026-86876-coremedia-reachability.txt",
+            "cve-2026-112477-iosurface-service-preconditions.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
