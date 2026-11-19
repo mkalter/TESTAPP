@@ -64,6 +64,19 @@ assert 'remoteObjectProxyWithErrorHandler' in t7
 assert 'if (!bundle.length) continue;' in t7
 assert 'BQCKKnownAvailableStandardFace' in t7
 assert 'NTKFaceDescriptor' in t7 and 'CLKDevice' in t7
+cve = (root / "HermesEnabler2/BQNativeFaceBoundaryLab.m").read_text()
+for title, fn, report in [
+    ("T11 · TCC CVE-2026-86886", "BQRunTCC86886Reachability", "cve-2026-86886-tcc-reachability.txt"),
+    ("T12 · CoreMedia CVE-2026-86876", "BQRunCoreMedia86876Reachability", "cve-2026-86876-coremedia-reachability.txt"),
+]:
+    assert title in swift
+    assert fn in headers and fn + "()" in swift
+    assert report in transport and report in cve
+    assert fn + "()" not in swift.split("private func runAll()",1)[1]
+assert 'bootstrap_look_up' in cve and '@"com.apple.tccd"' in cve
+assert '"CMBlockBufferCreateEmpty"' in cve
+assert 'empty(kCFAllocatorDefault,0,0,&block)' in cve
+assert 'No malformed buffer, codec parsing, race, exploit payload' in cve
 assert 'T10 · Hermès 2025-apparaatcontrole' in swift
 assert 'BQRunOriginalHermes2025IdentityGates' in headers
 assert 'BQRunOriginalHermes2025IdentityGates()' in swift
@@ -128,7 +141,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six baseline probes, T7/T8 validator and separate T9/T10 local read-only identity probes")
+print("PASS: six baseline probes, T7-T10 and separate T11 TCC / T12 CoreMedia non-destructive CVE reachability")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
