@@ -77,6 +77,15 @@ assert 'bootstrap_look_up' in cve and '@"com.apple.tccd"' in cve
 assert '"CMBlockBufferCreateEmpty"' in cve
 assert 'empty(kCFAllocatorDefault,0,0,&block)' in cve
 assert 'No malformed buffer, codec parsing, race, exploit payload' in cve
+assert 'T13 · IOSurface CVE-2026-112477' in swift
+assert 'BQRunIOSurface112477Reachability' in headers
+assert 'BQRunIOSurface112477Reachability()' in swift
+assert 'BQRunIOSurface112477Reachability()' not in swift.split("private func runAll()",1)[1]
+assert transport.count('"cve-2026-112477-iosurface-service-preconditions.txt"') >= 2
+assert '"IOSurfaceRoot"' in cve
+assert 'IOServiceOpen' in cve and 'IOServiceClose' in cve
+assert 'No selector 17/18, no surface lifecycle race' in cve
+assert '"cve-2026-112477-iosurface-service-preconditions.txt"' in cve
 assert 'T10 · Hermès 2025-apparaatcontrole' in swift
 assert 'BQRunOriginalHermes2025IdentityGates' in headers
 assert 'BQRunOriginalHermes2025IdentityGates()' in swift
@@ -141,7 +150,7 @@ for pattern in [
     code = re.sub(r'@"(?:\\.|[^"\\])*"|"(?:\\.|[^"\\])*"', '""', code)
     assert not re.search(pattern, code), f"Disallowed protected mutation pattern: {pattern}"
 
-print("PASS: six baseline probes, T7-T10 and separate T11 TCC / T12 CoreMedia non-destructive CVE reachability")
+print("PASS: six baseline probes, T7-T10 and separate T11/T12/T13 non-destructive CVE precondition tests")
 print("PASS: pre-backup navigation and matching Swift interface entrypoints")
 print("PASS: only read-only filesystem descriptors; own-Documents log output")
 print("NOTE: no on-device native Hermès unlock inferred from this source test")
