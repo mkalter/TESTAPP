@@ -16,7 +16,9 @@ struct NativeFaceBoundaryLabView: View {
         ("T7 · ClockKit-validatie", "Vraag Apple alleen of een wijzerplaattype geldig is; niets installeren."),
         ("T8 · Positieve Apple-controle", "Vergelijk een aantoonbaar beschikbare Apple-wijzerplaat met Hermès."),
         ("T9 · Migratie-lookup", "Vergelijk lokaal de gewone en Apple's migratiegerichte Hermès-FaceBundle-lookup."),
-        ("T10 · Hermès 2025-apparaatcontrole", "Meet echte categorie, merk en collectie van de Watch zonder MobileGestalt te veranderen.")
+        ("T10 · Hermès 2025-apparaatcontrole", "Meet echte categorie, merk en collectie van de Watch zonder MobileGestalt te veranderen."),
+        ("T11 · TCC CVE-2026-86886", "Controleer Apple's TCC-dienst en rechten, zonder pad-traversal of schrijven."),
+        ("T12 · CoreMedia CVE-2026-86876", "Controleer CoreMedia-beschikbaarheid en een veilige lege buffer.")
     ]
 
     var body: some View {
@@ -24,7 +26,7 @@ struct NativeFaceBoundaryLabView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Native Hermès · systeemonderzoek")
                     .font(.headline)
-                Text("T1–T6 meten rechten. T7/T8 valideren via ClockKit, T9 vergelijkt alleen lokale FaceBundle-lookups; niets wordt geïnstalleerd.")
+                Text("T1–T6 meten rechten. T7–T10 onderzoeken native gezichten; T11/T12 controleren CVE-voorwaarden zonder exploits of systeemwijzigingen.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -86,6 +88,12 @@ struct NativeFaceBoundaryLabView: View {
             case 9:
                 name = "hermes2025-live-identity-gates.txt"
                 output = BQRunOriginalHermes2025IdentityGates() as String
+            case 10:
+                name = "cve-2026-86886-tcc-reachability.txt"
+                output = BQRunTCC86886Reachability() as String
+            case 11:
+                name = "cve-2026-86876-coremedia-reachability.txt"
+                output = BQRunCoreMedia86876Reachability() as String
             default:
                 name = "native-face-bundle-inventory.txt"
                 output = BQRunNativeFaceBundleInventory() as String
