@@ -122,6 +122,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "clockkit-availability-differential.txt",
             "clockkit-migration-local-differential.txt",
             "hermes2025-live-identity-gates.txt",
+            "cve-2026-86886-tcc-reachability.txt",
+            "cve-2026-86876-coremedia-reachability.txt",
             "bqtool-tail.txt"
         ]
         guard permittedNames.contains(name) else {
@@ -178,6 +180,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             "clockkit-availability-differential.txt",
             "clockkit-migration-local-differential.txt",
             "hermes2025-live-identity-gates.txt",
+            "cve-2026-86886-tcc-reachability.txt",
+            "cve-2026-86876-coremedia-reachability.txt",
             "bqtool.log"
         ]
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
